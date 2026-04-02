@@ -1,7 +1,7 @@
 # Prept — An AI-Powered Marketplace for Real-World Interview Preparation
 
 <p align="center">
-  <img width="1280" height="720" alt="Prept Dashboard Overview" src="./banner.png" />
+  <img width="1280" alt="Prept Dashboard Overview" src="https://raw.githubusercontent.com/aayushsoni-ai/PrepT/main/banner.png" />
 </p>
 
 ## 🌟 Overview
