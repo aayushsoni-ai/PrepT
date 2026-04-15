@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../lib/generated/prisma"
 }
 
@@ -19,9 +19,11 @@ enum UserRole {
 }
 
 enum BookingStatus {
+  PENDING
   SCHEDULED
   COMPLETED
   CANCELLED
+  REJECTED
 }
 
 enum AvailabilityStatus {
@@ -57,6 +59,7 @@ enum TransactionType {
   CREDIT_PURCHASE
   BOOKING_DEDUCTION
   BOOKING_EARNING
+  BOOKING_REFUND
   ADMIN_ADJUSTMENT
 }
 
@@ -116,7 +119,7 @@ model Booking {
   interviewer    User          @relation("InterviewerBookings", fields: [interviewerId], references: [id])
   startTime      DateTime
   endTime        DateTime
-  status         BookingStatus @default(SCHEDULED)
+  status         BookingStatus @default(PENDING)
   creditsCharged Int
   streamCallId   String?       @unique
   recordingUrl   String?

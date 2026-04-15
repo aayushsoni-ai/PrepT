@@ -58,7 +58,7 @@ export default function SlotPicker({
   }, [selectedDate, availability, interviewer.bookingsAsInterviewer]);
 
   useEffect(() => {
-    if (data?.success && data.streamCallId) {
+    if (data?.success) {
       router.push(`/appointments`);
     }
   }, [data, router]);
@@ -252,10 +252,10 @@ export default function SlotPicker({
             </div>
 
             <div className="flex items-start gap-2.5 rounded-xl border border-white/8 bg-white/2 px-3.5 py-3">
-              <span className="text-sm shrink-0">🎥</span>
+              <span className="text-sm shrink-0">🕒</span>
               <p className="text-xs text-stone-500 font-light leading-relaxed">
-                A video call room will be created and you&apos;ll be redirected
-                immediately after confirming.
+                Your request will be sent to the interviewer. You&apos;ll be
+                notified once they accept.
               </p>
             </div>
 
@@ -280,7 +280,7 @@ export default function SlotPicker({
                 disabled={loading}
                 onClick={handleConfirm}
               >
-                {loading ? "Creating call…" : "Confirm →"}
+                {loading ? "Sending request…" : "Confirm Booking →"}
               </Button>
             </div>
           </div>

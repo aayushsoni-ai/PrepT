@@ -60,7 +60,7 @@ export default function AvailabilitySection({ initial }) {
   return (
     <section className="bg-[#0f0f11] border border-white/10 rounded-2xl p-8 flex flex-col gap-7">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
         <div>
           <span className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-lg mb-4">
             <Clock size={18} className="text-amber-400" />
@@ -86,7 +86,7 @@ export default function AvailabilitySection({ initial }) {
       <div className="h-px bg-white/5" />
 
       {/* Time inputs */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label className="text-stone-400 text-xs">Start time</Label>
           <Input
@@ -132,7 +132,7 @@ export default function AvailabilitySection({ initial }) {
         variant="gold"
         disabled={!hasWindow || loading}
         onClick={handleSave}
-        className="self-start"
+        className="w-full sm:w-auto self-start"
       >
         {loading
           ? "Saving…"

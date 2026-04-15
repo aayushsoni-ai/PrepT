@@ -27,6 +27,7 @@ import "stream-chat-react/dist/css/v2/index.css";
 import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Sparkles, Loader2 } from "lucide-react";
 import AIQuestionsPanel from "./AIQuestions";
+import { completeCallAndGenerateFeedback } from "@/actions/appointments";
 
 // ─── Call UI (inside StreamCall context) ─────────────────────────────────────
 
@@ -39,11 +40,20 @@ export default function CallUI({
   token,
   currentUser,
 }) {
-  const { useCallCallingState } = useCallStateHooks();
+  const { useCallCallingState, useParticipants } = useCallStateHooks();
   const call = useCall();
   const callingState = useCallCallingState();
+  const participants = useParticipants();
 
   const [activeTab, setActiveTab] = useState("chat");
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [hadBothJoined, setHadBothJoined] = useState(false);
+
+  useEffect(() => {
+    if (participants?.length >= 2) {
+      setHadBothJoined(true);
+    }
+  }, [participants?.length]);
 
   // Auto-stop recording before leaving
   const handleLeave = useCallback(async () => {
@@ -54,11 +64,19 @@ export default function CallUI({
           await call.stopRecording().catch(() => {});
         }
         await call.leave().catch(() => {});
+
+        if (isInterviewer && hadBothJoined) {
+          try {
+            await completeCallAndGenerateFeedback(booking.id);
+          } catch (e) {
+            console.error("Failed to complete call and generate feedback", e);
+          }
+        }
       }
     } finally {
       onLeave();
     }
-  }, [call, onLeave]);
+  }, [call, isInterviewer, hadBothJoined, booking.id, onLeave]);
 
   // ── Chat client — same token works for both Video + Chat SDKs ──
   const chatClient = useCreateChatClient({
@@ -124,12 +142,24 @@ export default function CallUI({
             </Badge>
           )}
         </div>
+        
+        {/* Toggle Panel Button */}
+        <button
+          type="button"
+          onClick={() => setIsPanelOpen(!isPanelOpen)}
+          className="flex items-center gap-2 text-[11px] sm:text-xs font-medium px-3 py-1.5 rounded-lg border border-white/10 text-stone-400 hover:text-stone-300 hover:bg-white/5 transition-colors shrink-0"
+        >
+          <MessageSquare size={14} />
+          <span>
+            {isPanelOpen ? "Close chat" : "Open chat"}
+          </span>
+        </button>
       </div>
 
       {/* Body: video + side panel */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* ── LEFT: Video ── */}
-        <div className="flex flex-col flex-1 min-w-0">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
           <StreamTheme>
             <SpeakerLayout participantBarPosition="bottom" />
             <CallControls onLeave={handleLeave} />
@@ -137,63 +167,65 @@ export default function CallUI({
         </div>
 
         {/* ── RIGHT: Chat / AI panel ── */}
-        <div className="w-85 shrink-0 flex flex-col border-l border-white/8 bg-[#0a0a0b]">
-          {/* Tab switcher */}
-          <div className="flex border-b border-white/8 shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab("chat")}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-medium transition-colors ${
-                activeTab === "chat"
-                  ? "text-amber-400 border-b-2 border-amber-400"
-                  : "text-stone-500 hover:text-stone-300"
-              }`}
-            >
-              <MessageSquare size={13} />
-              Chat
-            </button>
-
-            {/* AI Questions tab — interviewer only */}
-            {isInterviewer && (
+        {isPanelOpen && (
+          <div className="w-full h-[50vh] lg:h-auto lg:w-[340px] shrink-0 flex flex-col border-t lg:border-t-0 lg:border-l border-white/8 bg-[#0a0a0b]">
+            {/* Tab switcher */}
+            <div className="flex border-b border-white/8 shrink-0">
               <button
                 type="button"
-                onClick={() => setActiveTab("ai")}
+                onClick={() => setActiveTab("chat")}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-medium transition-colors ${
-                  activeTab === "ai"
+                  activeTab === "chat"
                     ? "text-amber-400 border-b-2 border-amber-400"
                     : "text-stone-500 hover:text-stone-300"
                 }`}
               >
-                <Sparkles size={13} />
-                AI Questions
+                <MessageSquare size={13} />
+                Chat
               </button>
-            )}
-          </div>
 
-          {/* Panel content */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            {activeTab === "chat" ? (
-              chatClient && chatChannel ? (
-                <Chat client={chatClient} theme="str-chat__theme-dark">
-                  <Channel channel={chatChannel}>
-                    <Window>
-                      <MessageList />
-                      <MessageInput focus />
-                    </Window>
-                  </Channel>
-                </Chat>
+              {/* AI Questions tab — interviewer only */}
+              {isInterviewer && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("ai")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-medium transition-colors ${
+                    activeTab === "ai"
+                      ? "text-amber-400 border-b-2 border-amber-400"
+                      : "text-stone-500 hover:text-stone-300"
+                  }`}
+                >
+                  <Sparkles size={13} />
+                  AI Questions
+                </button>
+              )}
+            </div>
+
+            {/* Panel content */}
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {activeTab === "chat" ? (
+                chatClient && chatChannel ? (
+                  <Chat client={chatClient} theme="str-chat__theme-dark">
+                    <Channel channel={chatChannel}>
+                      <Window>
+                        <MessageList />
+                        <MessageInput focus />
+                      </Window>
+                    </Channel>
+                  </Chat>
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 size={18} className="text-stone-600 animate-spin" />
+                  </div>
+                )
               ) : (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 size={18} className="text-stone-600 animate-spin" />
+                <div className="p-4 h-full overflow-y-scroll max-h-screen">
+                  <AIQuestionsPanel categories={booking.categories} />
                 </div>
-              )
-            ) : (
-              <div className="p-4 h-full overflow-y-scroll max-h-screen">
-                <AIQuestionsPanel categories={booking.categories} />
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

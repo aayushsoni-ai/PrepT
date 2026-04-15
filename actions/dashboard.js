@@ -5,12 +5,11 @@ import { db } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { request } from "@arcjet/next";
 import { createRateLimiter, checkRateLimit } from "@/lib/arcjet";
-import { Resend } from "resend";
+import { sendMail } from "@/lib/mail";
 import { WithdrawalRequestEmail } from "@/emails/WithdrawalRequestEmail";
 import { render } from "@react-email/render";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-const ADMIN_EMAIL = "aayushsoni516@gmail.com";
+import { cleanupBookings } from "./booking";
+const EMAIL_ADMIN = process.env.ADMIN_EMAIL;
 
 const withdrawalLimiter = createRateLimiter({
   refillRate: 1,
@@ -81,6 +80,8 @@ export const getInterviewerAppointments = async () => {
   const dbUser = await db.user.findUnique({ where: { clerkUserId: user.id } });
   if (!dbUser) throw new Error("User not found");
 
+  await cleanupBookings();
+
   return db.booking.findMany({
     where: { interviewerId: dbUser.id },
     include: {
@@ -94,11 +95,13 @@ export const getInterviewerAppointments = async () => {
 // ─── EARNINGS / WITHDRAWAL ────────────────────────────────────────────────────
 
 export const getInterviewerStats = async () => {
-  const user = await currentUser();
-  if (!user) throw new Error("Unauthorized");
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  await cleanupBookings();
 
   const dbUser = await db.user.findUnique({
-    where: { clerkUserId: user.id },
+    where: { clerkUserId: userId },
     select: {
       creditBalance: true,
       creditRate: true,
@@ -301,9 +304,9 @@ export const requestWithdrawal = async ({
         })
       );
 
-      await resend.emails.send({
-        from: "Prept <onboarding@resend.dev>",
-        to: ADMIN_EMAIL,
+      await sendMail({
+        from: process.env.EMAIL_FROM,
+        to: EMAIL_ADMIN,
         subject: `Withdrawal Request — ${dbUser.name} · ${credits} credits`,
         html,
       });

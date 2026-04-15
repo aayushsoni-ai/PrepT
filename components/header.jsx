@@ -26,10 +26,10 @@ const Header = async () => {
 
       <div className="flex items-center gap-3">
         <SignedOut>
-          <SignInButton mode="modal">
+          <SignInButton forceRedirectUrl="/onboarding" mode="modal">
             <Button variant="ghost">Sign in</Button>
           </SignInButton>
-          <SignInButton mode="modal">
+          <SignInButton forceRedirectUrl="/onboarding" mode="modal">
             <Button variant="gold">Get started →</Button>
           </SignInButton>
         </SignedOut>

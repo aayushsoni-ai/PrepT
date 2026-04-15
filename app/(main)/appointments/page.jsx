@@ -6,6 +6,7 @@ import { AppointmentCard } from "@/components/AppointmentCard";
 import PageHeader from "@/components/reusables";
 import { Button } from "@/components/ui/button";
 import { CalendarDays } from "lucide-react";
+import { AutoRefresh } from "@/components/AutoRefresh";
 
 export default async function MyAppointmentsPage() {
   const user = await currentUser();
@@ -16,12 +17,31 @@ export default async function MyAppointmentsPage() {
   const scheduled = appointments.filter(
     (a) => a.status === "SCHEDULED" && new Date(a.startTime) > now
   );
-  const past = appointments.filter(
-    (a) => a.status !== "SCHEDULED" || new Date(a.endTime) <= now
+  const pending = appointments.filter(
+    (a) => a.status === "PENDING" && new Date(a.startTime) > now
   );
+  const past = appointments.filter(
+    (a) =>
+      (a.status !== "SCHEDULED" && a.status !== "PENDING") ||
+      new Date(a.endTime) <= now
+  );
+
+  const needsRefresh = appointments.some((a) => {
+    if (a.feedback) return false;
+    const endTimeMs = new Date(a.endTime).getTime();
+    const nowMs = Date.now();
+    if (a.status === "COMPLETED") return true;
+    if (a.status === "SCHEDULED") {
+      if (nowMs > endTimeMs - 60000 && nowMs < endTimeMs + 2 * 60 * 60 * 1000) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   return (
     <main className="min-h-screen bg-black">
+      <AutoRefresh condition={needsRefresh} interval={10000} />
       {/* ── Page header ── */}
       <PageHeader
         label="My appointments"
@@ -48,6 +68,24 @@ export default async function MyAppointmentsPage() {
             <Button variant="gold" asChild>
               <Link href="/explore">Browse interviewers →</Link>
             </Button>
+          </div>
+        )}
+
+        {/* ── Pending ── */}
+        {pending.length > 0 && (
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-4">
+              <p className="text-xs font-semibold text-stone-500 tracking-widest uppercase flex items-center gap-2">
+                Pending Requests ({pending.length})
+                <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+              </p>
+              <div className="flex-1 h-px bg-white/5" />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {pending.map((b) => (
+                <AppointmentCard key={b.id} booking={b} mode="interviewee" isPast={false} />
+              ))}
+            </div>
           </div>
         )}
 

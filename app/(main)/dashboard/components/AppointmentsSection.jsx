@@ -3,18 +3,38 @@
 import { AppointmentCard } from "@/components/AppointmentCard";
 import { GrayTitle } from "@/components/reusables";
 import { ClipboardList } from "lucide-react";
+import { AutoRefresh } from "@/components/AutoRefresh";
 
 export default function AppointmentsSection({ appointments }) {
   const now = new Date();
   const scheduled = appointments.filter(
     (a) => a.status === "SCHEDULED" && new Date(a.startTime) > now
   );
-  const past = appointments.filter(
-    (a) => a.status !== "SCHEDULED" || new Date(a.endTime) <= now
+  const pending = appointments.filter(
+    (a) => a.status === "PENDING" && new Date(a.startTime) > now
   );
+  const past = appointments.filter(
+    (a) =>
+      (a.status !== "SCHEDULED" && a.status !== "PENDING") ||
+      new Date(a.endTime) <= now
+  );
+
+  const needsRefresh = appointments.some((a) => {
+    if (a.feedback) return false;
+    const endTimeMs = new Date(a.endTime).getTime();
+    const nowMs = Date.now();
+    if (a.status === "COMPLETED") return true;
+    if (a.status === "SCHEDULED") {
+      if (nowMs > endTimeMs - 60000 && nowMs < endTimeMs + 2 * 60 * 60 * 1000) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   return (
     <section className="flex flex-col gap-6">
+      <AutoRefresh condition={needsRefresh} interval={10000} />
       <div className="bg-[#0f0f11] border border-white/10 rounded-2xl p-8">
         <span className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mb-4">
           <ClipboardList size={18} className="text-amber-400" />
@@ -36,6 +56,25 @@ export default function AppointmentsSection({ appointments }) {
         </div>
       ) : (
         <div className="flex flex-col gap-10">
+          {pending.length > 0 && (
+            <div className="flex flex-col gap-4">
+              <p className="text-xs font-semibold text-stone-500 tracking-widest uppercase flex items-center gap-2">
+                Pending Requests ({pending.length})
+                <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+              </p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {pending.map((b) => (
+                  <AppointmentCard
+                    key={b.id}
+                    booking={b}
+                    mode="interviewer"
+                    isPast={false}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {scheduled.length > 0 && (
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold text-stone-500 tracking-widest uppercase">

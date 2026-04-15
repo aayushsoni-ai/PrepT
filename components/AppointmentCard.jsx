@@ -1,21 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, Video, Sparkles } from "lucide-react";
+import { Calendar, Clock, Video, Sparkles, Check, X } from "lucide-react";
 import { FeedbackModal } from "./FeedbackModal";
 import { formatDate, formatDuration, formatTime } from "@/lib/helpers";
 import { RATING_LABEL, RATING_STYLES, STATUS_STYLES } from "@/lib/data";
+import { updateBookingStatus } from "@/actions/booking";
+import { toast } from "sonner";
 
 export function AppointmentCard({ booking, mode, isPast = false }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const { has } = useAuth();
+  const { user: clerkUser } = useUser();
 
   const {
+    id: bookingId,
     startTime,
     endTime,
     status,
@@ -24,6 +29,24 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
     recordingUrl,
     feedback,
   } = booking;
+
+  const handleStatusUpdate = async (newStatus) => {
+    setLoading(true);
+    try {
+      const res = await updateBookingStatus(bookingId, newStatus);
+      if (res.success) {
+        toast.success(
+          newStatus === "SCHEDULED"
+            ? "Interview accepted!"
+            : "Interview rejected."
+        );
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to update booking");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const person =
     mode === "interviewer" ? booking.interviewee : booking.interviewer;
@@ -38,7 +61,18 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
       ? "border-green-500/20 bg-green-500/10 text-green-400"
       : "border-amber-400/20 bg-amber-400/5 text-amber-400";
 
-  const isUpcoming = status === "SCHEDULED";
+  const now = new Date();
+  const isUpcoming = status === "SCHEDULED" && new Date(endTime) > now;
+  const isPending = status === "PENDING" && new Date(startTime) > now;
+  const isPastSession = new Date(endTime) <= now;
+
+  const statusLabel = {
+    PENDING: isPastSession ? "Expired" : "Pending",
+    SCHEDULED: isPastSession ? "Completed" : "Confirmed",
+    COMPLETED: "Completed",
+    CANCELLED: "Cancelled",
+    REJECTED: "Rejected",
+  }[status];
 
   return (
     <>
@@ -52,8 +86,8 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
       />
 
       <article className="group relative bg-[#0f0f11] border border-white/10 transition-all duration-300 hover:-translate-y-0.5 rounded-2xl bg-linear-to-t from-transparent via-transparent to-amber-300/10 p-7 flex flex-col gap-6 self-start">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0 w-full sm:w-auto">
             <Avatar className="w-14 h-14 border border-white/10 rounded-2xl shrink-0">
               <AvatarImage
                 src={person?.imageUrl}
@@ -95,9 +129,9 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-2 shrink-0">
+          <div className="flex flex-row sm:flex-col items-center sm:items-end gap-2 shrink-0 flex-wrap">
             <Badge variant="outline" className={STATUS_STYLES[status]}>
-              {status.charAt(0) + status.slice(1).toLowerCase()}
+              {statusLabel}
             </Badge>
             <Badge variant="outline" className={creditsStyle}>
               {creditsLabel}
@@ -107,7 +141,7 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
 
         <div className="h-px bg-white/5" />
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 text-stone-600">
               <Calendar size={12} />
@@ -156,51 +190,70 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
           </div>
         )}
 
-        {(streamCallId || recordingUrl || feedback) && (
-          <div className="flex items-center gap-2 flex-wrap pt-1">
-            {!isPast && streamCallId && isUpcoming && (
-              <Button variant="gold" size="sm" className="gap-2" asChild>
-                <Link href={`/call/${streamCallId}`}>
-                  <Video size={13} />
-                  Join call
-                </Link>
+        <div className="flex items-center gap-2 flex-wrap pt-1">
+          {isPending && mode === "interviewer" && !isPast && (
+            <>
+              <Button
+                variant="gold"
+                size="sm"
+                className="gap-1.5 h-9 grow sm:grow-0"
+                onClick={() => handleStatusUpdate("SCHEDULED")}
+                disabled={loading}
+              >
+                <Check size={14} />
+                Accept Request
               </Button>
-            )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 h-9 border-red-500/20 text-red-400 hover:bg-red-500/10 hover:border-red-500/40 grow sm:grow-0"
+                onClick={() => handleStatusUpdate("REJECTED")}
+                disabled={loading}
+              >
+                <X size={14} />
+                Reject
+              </Button>
+            </>
+          )}
 
-            {recordingUrl && has?.({ plan: "pro" }) && (
-              <Button variant="outline" size="sm" className="gap-2" asChild>
-                <a
-                  href={recordingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+          {!isPast && streamCallId && isUpcoming && (
+            <Button variant="gold" size="sm" className="gap-2" asChild>
+              <Link href={`/call/${streamCallId}`}>
+                <Video size={13} />
+                Join call
+              </Link>
+            </Button>
+          )}
+
+          {recordingUrl && has?.({ plan: "pro" }) && (
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <a href={recordingUrl} target="_blank" rel="noopener noreferrer">
+                📹 Recording
+              </a>
+            </Button>
+          )}
+
+          {feedback &&
+            (has?.({ plan: "starter" }) || has?.({ plan: "pro" })) && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-amber-400/20 text-amber-400 hover:bg-amber-400/10 hover:border-amber-400/40"
+                  onClick={() => setFeedbackOpen(true)}
                 >
-                  📹 Recording
-                </a>
-              </Button>
+                  <Sparkles size={12} />
+                  Full Feedback
+                </Button>
+                <Badge
+                  variant="outline"
+                  className={RATING_STYLES[feedback.overallRating]}
+                >
+                  ✦ {RATING_LABEL[feedback.overallRating]} performance
+                </Badge>
+              </>
             )}
-
-            {feedback &&
-              (has?.({ plan: "starter" }) || has?.({ plan: "pro" })) && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 border-amber-400/20 text-amber-400 hover:bg-amber-400/10 hover:border-amber-400/40"
-                    onClick={() => setFeedbackOpen(true)}
-                  >
-                    <Sparkles size={12} />
-                    Full Feedback
-                  </Button>
-                  <Badge
-                    variant="outline"
-                    className={RATING_STYLES[feedback.overallRating]}
-                  >
-                    ✦ {RATING_LABEL[feedback.overallRating]} performance
-                  </Badge>
-                </>
-              )}
-          </div>
-        )}
+        </div>
       </article>
     </>
   );

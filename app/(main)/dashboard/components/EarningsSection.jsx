@@ -32,7 +32,7 @@ const PAYMENT_METHODS = [
   { value: "UPI", label: "UPI", placeholder: "your@upi" },
 ];
 
-const PLATFORM_FEE = 0.2;
+const PLATFORM_FEE = 0.02;
 
 export default function EarningsSection({ stats, history }) {
   const [open, setOpen] = useState(false);
@@ -76,7 +76,7 @@ export default function EarningsSection({ stats, history }) {
   return (
     <section className="flex flex-col gap-6">
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           {
             label: "Credit balance",
@@ -108,11 +108,10 @@ export default function EarningsSection({ stats, history }) {
           >
             <span className="text-lg">{stat.icon}</span>
             <p
-              className={`font-serif text-4xl leading-none tracking-tight ${
-                stat.gold
+              className={`font-serif text-4xl leading-none tracking-tight ${stat.gold
                   ? "bg-linear-to-br from-amber-300 to-amber-500 bg-clip-text text-transparent"
                   : "bg-linear-to-br from-stone-100 to-stone-400 bg-clip-text text-transparent"
-              }`}
+                }`}
             >
               {stat.value}
             </p>
@@ -129,20 +128,20 @@ export default function EarningsSection({ stats, history }) {
       </div>
 
       {/* Withdrawal trigger card */}
-      <div className="bg-[#0f0f11] border border-white/10 rounded-2xl p-8 flex items-center justify-between gap-4">
-        <div>
+      <div className="bg-[#0f0f11] border border-white/10 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 sm:gap-4">
+        <div className="flex flex-col">
           <h2 className="font-serif text-xl tracking-tight">
             <GrayTitle>Withdraw earnings</GrayTitle>
           </h2>
           <p className="text-xs text-stone-500 font-light mt-1">
-            20% platform fee applies. Processed within 2–3 business days.
+            2% platform fee applies. Processed within 2–3 business days.
           </p>
         </div>
         <Button
           variant="gold"
           disabled={balance <= 0}
           onClick={() => setOpen(true)}
-          className="shrink-0"
+          className="shrink-0 w-full sm:w-auto"
         >
           Request withdrawal
         </Button>
