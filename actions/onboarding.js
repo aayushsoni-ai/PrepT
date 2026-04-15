@@ -3,6 +3,8 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 
+import { applyReferralCode } from "./referrals";
+
 export const completeOnboarding = async (data) => {
   const user = await currentUser();
 
@@ -10,7 +12,7 @@ export const completeOnboarding = async (data) => {
     throw new Error("Unauthorized");
   }
 
-  const { role, title, company, yearsExp, bio, categories } = data;
+  const { role, title, company, yearsExp, bio, categories, referralCode } = data;
 
   if (!role || !["INTERVIEWEE", "INTERVIEWER"].includes(role)) {
     throw new Error("Invalid role");
@@ -36,6 +38,10 @@ export const completeOnboarding = async (data) => {
         }),
       },
     });
+
+    if (referralCode?.trim()) {
+      await applyReferralCode(referralCode.trim());
+    }
 
     return { success: true };
   } catch (error) {

@@ -6,8 +6,9 @@ import Link from "next/link";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, Video, Sparkles, Check, X } from "lucide-react";
+import { Calendar, Clock, Video, Sparkles, Check, X, Star } from "lucide-react";
 import { FeedbackModal } from "./FeedbackModal";
+import { ReviewModal } from "./ReviewModal";
 import { formatDate, formatDuration, formatTime } from "@/lib/helpers";
 import { RATING_LABEL, RATING_STYLES, STATUS_STYLES } from "@/lib/data";
 import { updateBookingStatus } from "@/actions/booking";
@@ -15,6 +16,7 @@ import { toast } from "sonner";
 
 export function AppointmentCard({ booking, mode, isPast = false }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { has } = useAuth();
   const { user: clerkUser } = useUser();
@@ -28,6 +30,7 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
     streamCallId,
     recordingUrl,
     feedback,
+    review,
   } = booking;
 
   const handleStatusUpdate = async (newStatus) => {
@@ -72,7 +75,10 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
     COMPLETED: "Completed",
     CANCELLED: "Cancelled",
     REJECTED: "Rejected",
-  }[status];
+    NO_SHOW_INTERVIEWER: "Interviewer No-show",
+    NO_SHOW_INTERVIEWEE: "Candidate No-show",
+    TECHNICAL_FAILURE: "System Error",
+  }[status] || status;
 
   return (
     <>
@@ -83,6 +89,13 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
         intervieweeName={
           mode === "interviewer" ? booking.interviewee?.name : undefined
         }
+      />
+
+      <ReviewModal
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        bookingId={bookingId}
+        interviewerName={mode === "interviewee" ? person?.name : undefined}
       />
 
       <article className="group relative bg-[#0f0f11] border border-white/10 transition-all duration-300 hover:-translate-y-0.5 rounded-2xl bg-linear-to-t from-transparent via-transparent to-amber-300/10 p-7 flex flex-col gap-6 self-start">
@@ -253,6 +266,32 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
                 </Badge>
               </>
             )}
+
+          {/* Leave Review — interviewee only, completed sessions, no existing review */}
+          {mode === "interviewee" &&
+            status === "COMPLETED" &&
+            !review &&
+            isPastSession && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-amber-400/20 text-amber-400 hover:bg-amber-400/10 hover:border-amber-400/40"
+                onClick={() => setReviewOpen(true)}
+              >
+                <Star size={12} />
+                Leave Review
+              </Button>
+            )}
+
+          {/* Show existing review badge */}
+          {review && mode === "interviewee" && (
+            <Badge
+              variant="outline"
+              className="border-amber-400/20 bg-amber-400/5 text-amber-400"
+            >
+              ★ {review.rating}/5 — Reviewed
+            </Badge>
+          )}
         </div>
       </article>
     </>

@@ -26,6 +26,20 @@ enum BookingStatus {
   REJECTED
 }
 
+enum SettlementStatus {
+  HELD
+  SETTLED
+  REFUNDED
+  DISPUTED
+}
+
+enum AttendanceEvent {
+  JOINED
+  LEFT
+  REJOINED
+  DISCONNECTED
+}
+
 enum AvailabilityStatus {
   AVAILABLE
   BOOKED
@@ -60,7 +74,24 @@ enum TransactionType {
   BOOKING_DEDUCTION
   BOOKING_EARNING
   BOOKING_REFUND
+  BOOKING_HELD
+  HELD_RELEASE
   ADMIN_ADJUSTMENT
+  REFERRAL_REWARD
+}
+
+enum ReferralStatus {
+  PENDING
+  QUALIFIED
+  REWARDED
+  FRAUDULENT
+}
+
+enum AISummaryStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 // ─── USER ────────────────────────────────────────────────
@@ -89,11 +120,32 @@ model User {
   creditRate    Int                 @default(1)
   creditBalance Int                 @default(0)
 
+  // rating (interviewer-only, denormalized for performance)
+  avgRating      Float?
+  totalReviews   Int     @default(0)
+  completionRate Float?
+  noShowCount    Int     @default(0)
+
+  // referral
+  referralCode String? @unique
+  referredById String?
+
+  // AI consent
+  aiReviewConsent Boolean @default(false)
+
+  // ─── relations ──────────────────────────────────────
   availabilities        Availability[]
-  bookingsAsInterviewee Booking[]           @relation("IntervieweeBookings")
-  bookingsAsInterviewer Booking[]           @relation("InterviewerBookings")
+  bookingsAsInterviewee Booking[]            @relation("IntervieweeBookings")
+  bookingsAsInterviewer Booking[]            @relation("InterviewerBookings")
   transactions          CreditTransaction[]
   payouts               Payout[]
+  attendanceLogs        AttendanceLog[]
+  reviewsReceived       InterviewerReview[]  @relation("ReviewsReceived")
+  reviewsGiven          InterviewerReview[]  @relation("ReviewsGiven")
+  badges                UserBadge[]
+
+  referralsSent         Referral[]           @relation("ReferralsSent")
+  referralsReceived     Referral[]           @relation("ReferralsReceived")
 }
 
 // ─── AVAILABILITY ────────────────────────────────────────
@@ -123,17 +175,53 @@ model Booking {
   creditsCharged Int
   streamCallId   String?       @unique
   recordingUrl   String?
+
+  // settlement
+  settlementStatus  SettlementStatus @default(HELD)
+  heldAmount        Int              @default(0)
+  settledAt         DateTime?
+  settlementNote    String?
+
+  // attendance tracking
+  interviewerJoined  Boolean @default(false)
+  intervieweeJoined  Boolean @default(false)
+  interviewerDuration Int    @default(0) // seconds
+  intervieweeDuration Int    @default(0) // seconds
+
+
+
+  // ─── relations ──────────────────────────────────────
   feedback       Feedback?
+  review         InterviewerReview?
+  aiSummary      AISummary?
+  attendanceLogs AttendanceLog[]
   transactions   CreditTransaction[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status, createdAt])
   @@index([interviewerId, status])
   @@index([intervieweeId, status])
+  @@index([settlementStatus])
 }
 
-// ─── FEEDBACK ────────────────────────────────────────────
+// ─── ATTENDANCE LOGS ─────────────────────────────────────
+
+model AttendanceLog {
+  id        String          @id @default(uuid())
+  bookingId String
+  booking   Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User            @relation(fields: [userId], references: [id])
+  event     AttendanceEvent
+  timestamp DateTime        @default(now())
+  metadata  Json?
+
+  @@index([bookingId, userId])
+}
+
+// ─── FEEDBACK (AI-generated post-call) ───────────────────
 
 model Feedback {
   id             String         @id @default(uuid())
@@ -150,6 +238,115 @@ model Feedback {
   sessionRating  Int?
   sessionComment String?        @db.Text
   createdAt      DateTime       @default(now())
+}
+
+// ─── INTERVIEWER REVIEWS (by interviewee) ────────────────
+
+model InterviewerReview {
+  id            String   @id @default(uuid())
+  bookingId     String   @unique
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  interviewerId String
+  interviewer   User     @relation("ReviewsReceived", fields: [interviewerId], references: [id])
+  intervieweeId String
+  interviewee   User     @relation("ReviewsGiven", fields: [intervieweeId], references: [id])
+
+  rating  Int       // 1-5 stars
+  comment String?   @db.Text
+  tags    String[]  // ["knowledgeable", "patient", "clear-explanations"]
+
+  createdAt DateTime @default(now())
+
+  @@index([interviewerId, createdAt])
+}
+
+// ─── BADGES ──────────────────────────────────────────────
+
+model Badge {
+  id          String      @id @default(uuid())
+  slug        String      @unique
+  name        String
+  description String
+  icon        String
+  category    String      // "achievement", "expertise", "performance"
+  criteria    Json        // { type: "min_sessions", value: 50 }
+  createdAt   DateTime    @default(now())
+
+  userBadges UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgeId   String
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  awardedAt DateTime @default(now())
+
+  @@unique([userId, badgeId])
+  @@index([userId])
+}
+
+
+
+// ─── REFERRALS ───────────────────────────────────────────
+
+model Referral {
+  id             String         @id @default(uuid())
+  referrerId     String
+  referrer       User           @relation("ReferralsSent", fields: [referrerId], references: [id])
+  refereeId      String         @unique
+  referee        User           @relation("ReferralsReceived", fields: [refereeId], references: [id])
+
+  status         ReferralStatus @default(PENDING)
+  referrerReward Int            @default(2)
+  refereeReward  Int            @default(1)
+  rewardedAt     DateTime?
+  createdAt      DateTime       @default(now())
+
+  @@index([referrerId])
+}
+
+// ─── AI SUMMARY (genuine post-call analysis) ─────────────
+
+model AISummary {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // scores (1-100)
+  overallScore       Int?
+  technicalScore     Int?
+  communicationScore Int?
+  problemSolvingScore Int?
+  confidenceScore    Int?
+
+  // detailed feedback
+  technicalFeedback     String?  @db.Text
+  communicationFeedback String?  @db.Text
+  strengthsShown        String[]
+  weakAreas             String[]
+  missedConcepts        String[]
+  suggestedTopics       String[]
+  improvementRoadmap    String?  @db.Text
+  readinessLevel        String?
+
+  // source data
+  transcriptUrl  String?
+  recordingUrl   String?
+  interviewType  String?
+
+  // consent
+  consentGiven Boolean @default(false)
+
+  // processing
+  status       AISummaryStatus @default(PENDING)
+  processedAt  DateTime?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
 }
 
 // ─── CREDIT TRANSACTIONS ─────────────────────────────────

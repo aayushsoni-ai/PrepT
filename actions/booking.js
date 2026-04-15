@@ -12,6 +12,7 @@ import { InterviewConfirmedEmail } from "@/emails/InterviewConfirmedEmail";
 import { InterviewAcceptedEmail } from "@/emails/InterviewAcceptedEmail";
 import { InterviewRejectedEmail } from "@/emails/InterviewRejectedEmail";
 import { render } from "@react-email/render";
+import { settleCall } from "./settlement";
 
 // Relaxed for development/testing
 const bookingLimiter = createRateLimiter({
@@ -43,6 +44,10 @@ export const getInterviewerProfile = async (interviewerId) => {
           where: { status: { in: ["PENDING", "SCHEDULED"] } },
           select: { startTime: true, endTime: true },
         },
+        badges: {
+          include: { badge: true },
+        },
+
       },
     });
 
@@ -73,7 +78,7 @@ export const bookSlot = async ({ interviewerId, startTime, endTime }) => {
   if (!interviewer || interviewer.role !== "INTERVIEWER")
     throw new Error("Interviewer not found");
 
-  const credits = interviewer.creditRate ?? 10;
+  let credits = interviewer.creditRate ?? 10;
 
   if (dbUser.credits < credits)
     throw new Error("Insufficient credits. Please upgrade your plan.");
@@ -236,11 +241,8 @@ export const updateBookingStatus = async (bookingId, status) => {
         data: { status: "SCHEDULED", streamCallId },
       });
 
-      // Now increment interviewer credits
-      await tx.user.update({
-        where: { id: dbUser.id },
-        data: { creditBalance: { increment: booking.creditsCharged } },
-      });
+      // We no longer release credits here. They stay in ESCROW.
+      // SettleCall will release them to the interviewer's creditBalance later.
     });
 
     // 📧 Send Confirmation Email to Interviewer
@@ -382,14 +384,18 @@ export const cleanupBookings = async () => {
       });
     }
 
-    // 2. Mark past SCHEDULED bookings as COMPLETED
-    await db.booking.updateMany({
+    // 2. Mark past SCHEDULED bookings via Settlement
+    const pastScheduled = await db.booking.findMany({
       where: {
         status: "SCHEDULED",
         endTime: { lt: now },
       },
-      data: { status: "COMPLETED" },
+      select: { id: true },
     });
+
+    for (const b of pastScheduled) {
+      await settleCall(b.id);
+    }
 
     // Note: no revalidatePath here — this function is called during render
     // (from data-fetching helpers), where revalidatePath is not allowed.

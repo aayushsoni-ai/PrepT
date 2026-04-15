@@ -23,6 +23,7 @@ export default function OnboardingPage() {
     yearsExp: "",
     bio: "",
     categories: [],
+    referralCode: "",
   });
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function OnboardingPage() {
         bio: form.bio,
         categories: form.categories,
       }),
+      referralCode: form.referralCode,
     });
   };
 
@@ -214,6 +216,19 @@ export default function OnboardingPage() {
                 />
               </div>
             )}
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="referralCode">Referral Code (Optional)</Label>
+              <Input
+                id="referralCode"
+                placeholder="PREP-XXXXXX"
+                value={form.referralCode}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, referralCode: e.target.value.toUpperCase() }))
+                }
+                className="max-w-xs uppercase bg-[#0f0f11] border-white/10"
+              />
+            </div>
 
             <Button
               variant="gold"

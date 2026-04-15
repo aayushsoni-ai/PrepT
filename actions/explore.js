@@ -24,6 +24,11 @@ export const getInterviewers = async () => {
         bio: true,
         categories: true,
         creditRate: true,
+        avgRating: true,
+        totalReviews: true,
+        badges: {
+          include: { badge: true },
+        },
         availabilities: {
           where: { status: "AVAILABLE" },
           select: { startTime: true, endTime: true },

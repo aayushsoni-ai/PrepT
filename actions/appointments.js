@@ -25,6 +25,7 @@ export const getIntervieweeAppointments = async () => {
         },
       },
       feedback: true,
+      review: { select: { rating: true } },
     },
     orderBy: { startTime: "desc" },
   });

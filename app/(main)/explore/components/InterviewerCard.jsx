@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CATEGORY_LABEL } from "@/lib/data";
 import { formatTime } from "@/lib/helpers";
+import { Star } from "lucide-react";
 
 export default function InterviewerCard({ interviewer }) {
   const {
@@ -18,6 +19,9 @@ export default function InterviewerCard({ interviewer }) {
     bio,
     categories,
     creditRate,
+    avgRating,
+    totalReviews,
+    badges,
     availabilities,
   } = interviewer;
   const availability = availabilities?.[0];
@@ -48,14 +52,25 @@ export default function InterviewerCard({ interviewer }) {
             </div>
           </div>
 
-          {yearsExp && (
-            <Badge
-              variant="outline"
-              className="shrink-0 border-white/10 text-stone-500 text-xs"
-            >
-              {yearsExp}+ yrs
-            </Badge>
-          )}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {yearsExp && (
+              <Badge
+                variant="outline"
+                className="border-white/10 text-stone-500 text-xs"
+              >
+                {yearsExp}+ yrs
+              </Badge>
+            )}
+            {totalReviews > 0 && (
+              <Badge
+                variant="outline"
+                className="border-amber-400/20 bg-amber-400/5 text-amber-400 text-[10px] px-2 py-0.5 gap-1"
+              >
+                <Star size={10} className="fill-amber-400" />
+                {avgRating?.toFixed(1)}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Bio */}
@@ -63,6 +78,22 @@ export default function InterviewerCard({ interviewer }) {
           <p className="text-xs text-stone-400 font-light leading-relaxed line-clamp-2">
             {bio}
           </p>
+        )}
+
+        {/* Badges */}
+        {badges && badges.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-[-4px]">
+            {badges.map(({ badge }) => (
+              <div
+                key={badge.id}
+                title={badge.name}
+                className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md border border-white/5 bg-[#141417] text-stone-300"
+              >
+                <span>{badge.icon}</span>
+                <span className="truncate max-w-[80px]">{badge.name}</span>
+              </div>
+            ))}
+          </div>
         )}
 
         {/* Categories */}

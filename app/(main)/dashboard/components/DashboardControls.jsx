@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Wallet, ClipboardList, Clock, ChevronDown } from "lucide-react";
+import { Wallet, ClipboardList, Clock, ChevronDown, Tag } from "lucide-react";
 import EarningsSection from "./EarningsSection";
 import AppointmentsSection from "./AppointmentsSection";
 import AvailabilitySection from "./AvailabilitySection";

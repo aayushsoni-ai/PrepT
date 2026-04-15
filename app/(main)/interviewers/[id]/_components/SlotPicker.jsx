@@ -16,7 +16,6 @@ import {
   generateSlots,
 } from "@/lib/helpers";
 
-const SLOT_DURATION_MINUTES = 45;
 const DAYS_AHEAD = 7;
 
 export default function SlotPicker({
@@ -43,8 +42,10 @@ export default function SlotPicker({
 
   const { data, loading, error, fn: bookFn } = useFetch(bookSlot);
 
+  const sessionDuration = 45;
+  const sessionCost = interviewerCredits || 10;
   const availability = interviewer.availabilities?.[0];
-  const canAfford = userCredits >= interviewerCredits;
+  const canAfford = userCredits >= sessionCost;
 
   const slots = useMemo(() => {
     if (!availability) return [];
@@ -53,7 +54,7 @@ export default function SlotPicker({
       availability.startTime,
       availability.endTime,
       interviewer.bookingsAsInterviewer ?? [],
-      SLOT_DURATION_MINUTES
+      sessionDuration
     );
   }, [selectedDate, availability, interviewer.bookingsAsInterviewer]);
 
@@ -88,6 +89,8 @@ export default function SlotPicker({
     });
   };
 
+
+
   if (!availability) {
     return (
       <div className="bg-[#0f0f11] border border-white/10 rounded-2xl p-8 text-center flex flex-col items-center gap-2">
@@ -103,7 +106,7 @@ export default function SlotPicker({
       <UpgradeModal
         open={upgradeOpen}
         onOpenChange={setUpgradeOpen}
-        reason={`You need ${interviewerCredits} credits to book this session. Your current balance is ${userCredits}.`}
+        reason={`You need ${sessionCost} credits to book this session. Your current balance is ${userCredits}.`}
       />
 
       <div className="flex flex-col gap-4">
@@ -122,7 +125,7 @@ export default function SlotPicker({
             <div className="text-right shrink-0">
               <p className="text-xs text-stone-600">Cost</p>
               <p className="font-serif text-2xl leading-none bg-linear-to-br from-amber-300 to-amber-500 bg-clip-text text-transparent">
-                {interviewerCredits}
+                {sessionCost}
                 <span className="text-xs font-sans text-stone-500 ml-1">
                   cr
                 </span>
@@ -231,7 +234,7 @@ export default function SlotPicker({
               <div className="flex justify-between text-xs">
                 <span className="text-stone-500">Duration</span>
                 <span className="text-stone-300">
-                  {SLOT_DURATION_MINUTES} minutes
+                  {sessionDuration} minutes
                 </span>
               </div>
             </div>
@@ -241,13 +244,13 @@ export default function SlotPicker({
             <div className="flex justify-between items-center">
               <span className="text-xs text-stone-400">Credits charged</span>
               <span className="font-serif text-lg bg-linear-to-br from-amber-300 to-amber-500 bg-clip-text text-transparent leading-none">
-                −{interviewerCredits}
+                −{sessionCost}
               </span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-stone-600">Balance after</span>
               <span className="text-stone-500">
-                {userCredits - interviewerCredits} credits
+                {userCredits - sessionCost} credits
               </span>
             </div>
 

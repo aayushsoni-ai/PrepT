@@ -1,6 +1,7 @@
 // app/api/webhooks/stream/route.js
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from "@/lib/prisma";
+import { recordCallEvent, settleCall } from "@/actions/settlement";
 
 export async function POST(request) {
   const body = await request.json();
@@ -10,7 +11,10 @@ export async function POST(request) {
 
   if (
     eventType !== "call.transcription_ready" &&
-    eventType !== "call.recording_ready"
+    eventType !== "call.recording_ready" &&
+    eventType !== "call.ended" &&
+    eventType !== "call.session_participant_joined" &&
+    eventType !== "call.session_participant_left"
   ) {
     console.log(`[stream-webhook] Ignoring event type: ${eventType}`);
     return Response.json({ ok: true });
@@ -53,6 +57,38 @@ export async function POST(request) {
     console.log(
       `[stream-webhook] Booking found: ${booking.id} | interviewer: ${booking.interviewer.name} | interviewee: ${booking.interviewee.name}`
     );
+
+    // ── Call Ended (Settlement) ───────────────────────────────────────────────
+    if (eventType === "call.ended") {
+      console.log(`[stream-webhook] Processing settlement...`);
+      await settleCall(booking.id);
+      return Response.json({ ok: true });
+    }
+
+    // ── Participant presence ──────────────────────────────────────────────────
+    if (
+      eventType === "call.session_participant_joined" ||
+      eventType === "call.session_participant_left"
+    ) {
+      const participantClerkId = body.participant?.user?.id;
+      if (!participantClerkId) return Response.json({ ok: true });
+
+      // Identify whether this is interviewer or interviewee
+      const userId =
+        participantClerkId === booking.interviewer.clerkUserId
+          ? booking.interviewer.id
+          : booking.interviewee.id;
+
+      await recordCallEvent({
+        bookingId: booking.id,
+        userId,
+        eventType: eventType === "call.session_participant_joined" ? "joined" : "left",
+        timestamp: body.created_at,
+      });
+
+      console.log(`[stream-webhook] Recorded ${eventType} for ${userId}`);
+      return Response.json({ ok: true });
+    }
 
     // ── Recording ready ───────────────────────────────────────────────────────
     if (eventType === "call.recording_ready") {
@@ -197,52 +233,24 @@ Analyze the candidate's performance. Respond ONLY with a valid JSON object, no m
 
       // 4. Write to DB — upsert handles concurrent webhook retries cleanly (no P2002)
       console.log(`[stream-webhook] Writing feedback to DB...`);
-      await db.$transaction([
-        db.feedback.upsert({
-          where: { bookingId: booking.id },
-          create: {
-            bookingId: booking.id,
-            summary: feedbackData.summary,
-            technical: feedbackData.technical,
-            communication: feedbackData.communication,
-            problemSolving: feedbackData.problemSolving,
-            recommendation: feedbackData.recommendation,
-            strengths: feedbackData.strengths,
-            improvements: feedbackData.improvements,
-            overallRating: feedbackData.overallRating,
-          },
-          update: {}, // already exists — no-op, keep the original
-        }),
-        db.booking.update({
-          where: { id: booking.id },
-          data: { status: "COMPLETED" },
-        }),
-      ]);
-      console.log(
-        `[stream-webhook] Feedback upserted + booking marked COMPLETED`
-      );
-
-      // Credit transaction is outside the main transaction so we can check first
-      const earnExists = await db.creditTransaction.findFirst({
-        where: { bookingId: booking.id, type: "BOOKING_EARNING" },
+      await db.feedback.upsert({
+        where: { bookingId: booking.id },
+        create: {
+          bookingId: booking.id,
+          summary: feedbackData.summary,
+          technical: feedbackData.technical,
+          communication: feedbackData.communication,
+          problemSolving: feedbackData.problemSolving,
+          recommendation: feedbackData.recommendation,
+          strengths: feedbackData.strengths,
+          improvements: feedbackData.improvements,
+          overallRating: feedbackData.overallRating,
+        },
+        update: {}, // already exists — no-op, keep the original
       });
-      if (!earnExists) {
-        await db.creditTransaction.create({
-          data: {
-            userId: booking.interviewer.id,
-            amount: booking.creditsCharged,
-            type: "BOOKING_EARNING",
-            bookingId: booking.id,
-          },
-        });
-        console.log(
-          `[stream-webhook] Credit earning transaction created (+${booking.creditsCharged} credits for interviewer)`
-        );
-      } else {
-        console.log(
-          `[stream-webhook] Earning transaction already exists, skipping`
-        );
-      }
+      console.log(
+        `[stream-webhook] Feedback upserted to booking ${booking.id}`
+      );
 
       console.log(`[stream-webhook] ✓ All done for booking ${booking.id}`);
     }

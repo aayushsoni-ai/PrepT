@@ -55,7 +55,6 @@ export default async function InterviewerDashboardPage() {
         appointments={appointments}
         availability={availability}
         stats={stats}
-        withdrawalHistory={withdrawalHistory}
       />
     </main>
   );
