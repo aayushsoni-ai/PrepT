@@ -103,6 +103,7 @@ export const getInterviewerStats = async () => {
   const dbUser = await db.user.findUnique({
     where: { clerkUserId: userId },
     select: {
+      id: true,
       creditBalance: true,
       creditRate: true,
       bookingsAsInterviewer: {
@@ -118,8 +119,33 @@ export const getInterviewerStats = async () => {
     0
   );
 
+  // Retroactive balance sync: Fix missing creditBalance from early test bookings 
+  // or referrals before dynamic settlement
+  const payouts = await db.payout.aggregate({
+    where: { interviewerId: dbUser.id, status: { in: ["PROCESSING", "PROCESSED"] } },
+    _sum: { credits: true },
+  });
+  const totalWithdrawn = payouts._sum.credits || 0;
+
+  const referralEarnings = await db.creditTransaction.aggregate({
+    where: { userId: dbUser.id, type: "REFERRAL_REWARD" },
+    _sum: { amount: true },
+  });
+  const totalReferralRewards = referralEarnings._sum.amount || 0;
+
+  const trueBalance = totalEarned + totalReferralRewards - totalWithdrawn;
+  let currentBalance = dbUser.creditBalance;
+
+  if (currentBalance !== trueBalance && trueBalance >= 0) {
+    await db.user.update({
+      where: { id: dbUser.id },
+      data: { creditBalance: trueBalance },
+    });
+    currentBalance = trueBalance;
+  }
+
   return {
-    creditBalance: dbUser.creditBalance,
+    creditBalance: currentBalance,
     creditRate: dbUser.creditRate,
     totalEarned,
     completedSessions: dbUser.bookingsAsInterviewer.length,

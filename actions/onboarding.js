@@ -2,6 +2,7 @@
 
 import { currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import { revalidatePath } from "next/cache";
 
 import { applyReferralCode } from "./referrals";
 
@@ -42,6 +43,8 @@ export const completeOnboarding = async (data) => {
     if (referralCode?.trim()) {
       await applyReferralCode(referralCode.trim());
     }
+
+    revalidatePath("/", "layout");
 
     return { success: true };
   } catch (error) {

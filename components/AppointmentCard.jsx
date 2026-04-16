@@ -269,9 +269,8 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
 
           {/* Leave Review — interviewee only, completed sessions, no existing review */}
           {mode === "interviewee" &&
-            status === "COMPLETED" &&
-            !review &&
-            isPastSession && (
+            (status === "COMPLETED" || (status === "SCHEDULED" && isPastSession)) &&
+            !review && (
               <Button
                 variant="outline"
                 size="sm"

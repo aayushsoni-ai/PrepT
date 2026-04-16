@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import RoleRedirect from "./RoleRedirect";
 import CreditButton from "./CreditButton";
-import { CalendarDays, Users } from "lucide-react";
+import { CalendarDays, Users, Gift } from "lucide-react";
 
 const Header = async () => {
   const user = await checkUser();
@@ -49,10 +49,16 @@ const Header = async () => {
                   <span className="hidden md:inline">Explore</span>
                 </Link>
               </Button>
-              <Button variant="default" asChild>
+              <Button variant="ghost" asChild>
                 <Link href="/appointments">
                   <CalendarDays size={16} />
-                  <span className="hidden md:inline">My Appointments</span>
+                  <span className="hidden md:inline">Appointments</span>
+                </Link>
+              </Button>
+              <Button variant="secondary" className="bg-amber-400/10 text-amber-400 hover:bg-amber-400/20 border-transparent hidden lg:flex" asChild>
+                <Link href="/referrals">
+                  <Gift size={16} />
+                  <span>Refer & Earn</span>
                 </Link>
               </Button>
             </>

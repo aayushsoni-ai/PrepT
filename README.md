@@ -1,46 +1,67 @@
-# Prept — An AI-Powered Marketplace for Real-World Interview Preparation
+![PrepT Banner](./banner.png)
 
-<p align="center">
-  <img width="1280" alt="Prept Dashboard Overview" src="https://raw.githubusercontent.com/aayushsoni-ai/PrepT/main/banner.png" />
-</p>
+# PrepT - Advanced AI-Powered Mock Interview Platform
 
-## 🌟 Overview
-**Prept** is a modern, full-stack interview marketplace built by  **Aayush Soni**, designed to redefine how mock interviews are conducted. It combines real-time video (WebRTC), collaborative tools, and AI-powered feedback into a seamless, scalable platform.
+PrepT is a comprehensive, production-ready marketplace that connects job seekers (Interviewees) with industry experts (Interviewers) for high-quality mock interviews. Built with Next.js 14, PrepT leverages cutting-edge technology including real-time video streaming, AI-powered post-interview feedback, automated credit-based settlements, and a robust referral engine.
 
-By enabling interviewers to monetize their time with flexible availability and automated payouts, and empowering candidates with smooth booking, live sessions, and actionable insights, Prept delivers a unified solution to the fragmented mock interview landscape.
-- **All-in-One Unified Ecosystem:** Instead of relying on fragmented third-party scheduling and meeting links, Prept natively embeds zero-latency video calls and scheduling dynamically within the browser.
-- **Intelligent Credit & Payouts Engine:** Features a custom double-entry ledger system using Prisma transactions to guarantee safe, race-condition-free credit deductions and automated backend withdrawal pipelines.
-- **Generative AI Integration:** Leverages AI APIs to generate deep insights, structure feedback automatically, and review interview performance to supercharge candidate prep.
-- **State-of-the-art Security:** Implements intelligent rate limiters (via Arcjet) to bulletproof sensitive financial operations and endpoints against bots or abuse.
+## 🚀 Key Features
 
-## 🛠️ Tooling & Tech Stack
-I have meticulously engineered this platform using the latest industry standards:
+### For Job Seekers (Interviewees)
+* **Expert Discovery**: Explore a rich directory of vetted interviewers from top tech companies. Filter by domain including Frontend, Backend, System Design, DSA, Behavioral, and Mobile.
+* **Credit-Based Booking System**: Purchase or earn credits to book tailored 45-minute sessions. Different interviewers can dynamically set their own credit rates.
+* **Seamless Video Calls**: Integrated with Stream Video for flawless, low-latency, and recorded 1:1 interview sessions right in the browser.
+* **AI-Generated Summary & Feedback**: Automatically process session transcripts to receive unparalleled AI feedback breaking down Technical skills, Communication proficiency, Problem-Solving abilities, and exact improvement roadmaps.
+* **Review & Rating System**: Rate your experience post-call to help maintain the quality of the marketplace.
 
-**Core Architecture**
-- **Next.js (App Router)** - Leveraging Server Actions, SSR, and React Server Components for maximum performance.
-- **React 19** - Utilizing the absolute latest concurrency hooks and state management.
+### For Industry Experts (Interviewers)
+* **Custom Profiles & Dynamic Pricing**: Set your own rate (e.g., 2 credits per session), define your availability, update your bio, and proudly display your past work experience.
+* **Interviewer Dashboard**: Track your upcoming schedule, view past sessions, and manage incoming requests seamlessly with single-click Accept/Reject choices.
+* **Automated Earnings & Smart Escrow**: The platform holds interviewee credits in escrow until the session successfully concludes. Our intelligent settlement engine analyzes connection presence to prevent fraud and handle "No-Shows" automatically. Total earnings are instantly deposited into your internal ledger.
+* **Rapid Cash Withdrawals**: Easily withdraw your `creditBalance` for real fiat to PayPal, Bank Transfer, or UPI minus a standard platform fee.
 
-**Authentication & Security**
-- **Clerk** - Advanced session management and secure authentication.
-- **Arcjet** - Real-time bot protection and rate-limiting to protect vital API routes.
+### Global Platform Features
+* **Smart Referral Engine**: Users can share their unique referral links. When a referred friend completes their first session, Interviewees get bonus credits, and Interviewers earn direct withdrawal balances.
+* **Real-time Notifications**: Fully integrated transactional emails via Resend to notify users of booking approvals, upcoming call links, and withdrawal lifecycle updates.
+* **Enterprise Security**: Protected by Clerk Authentication and state-of-the-art routing middleware, augmented by Arcjet to securely rate-limit requests, block bots, and harden endpoints.
 
-**Database & Data-Layer**
-- **Prisma ORM** - Strongly-typed database layer with Postgres edge compatibility.
-- **PostgreSQL** - Highly robust relational database handling complex table relationships (Bookings, Availabilities, Users, Payouts).
+## 🛠 Tech Stack
 
-**Real-Time Media & Communications**
-- **Stream Video SDK** - Delivering low-latency, scalable video conferencing rooms dynamically provisioned for each interview.
-- **Stream Chat** - Synced text channels for in-interview communications.
-- **Resend & React Email** - Delivering beautiful programmatic transactional emails in React.
+* **Framework**: Next.js 14 (App Router)
+* **Language**: JavaScript/React
+* **Database**: PostgreSQL (Hosted on Supabase)
+* **ORM**: Prisma
+* **Authentication**: Clerk
+* **Video Infrastructure**: Stream Video SDK
+* **Email Provider**: Resend & React Email
+* **Security & Rate Limiting**: Arcjet
+* **UI & Styling**: Tailwind CSS, Shadcn UI, Framer Motion, Lucide Icons
 
-**Artificial Intelligence**
-- **Google Generative AI (Gemini)** - The AI brain behind intelligent candidate evaluations and dynamically generated feedback.
+## ⚙️ Local Development
 
-**UI/UX & Styling**
-- **Tailwind CSS V4** - Utility-first styling with the newly introduced high-performance v4 engine.
-- **Shadcn UI & Radix Primitives** - Fully accessible and unstyled base components tailored to the exact design language of the platform.
-- **Motion** - Fluid, high-performance layout transitions and micro-animations.
+1. **Clone & Install Dependencies**
+   ```bash
+   npm install
+   ```
 
-## 🧠 Author
-Architected and developed by **Aayush Soni**. 
-This platform serves as a flagship demonstration of building complex, real-time, AI-augmented, and highly secure full-stack applications.
+2. **Environment Variables**
+   Ensure your `.env` is populated with the following keys:
+   * Next.js App URL
+   * Clerk Keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`)
+   * Prisma Database URL (`DATABASE_URL`, `DIRECT_URL`)
+   * Stream Video Keys (`NEXT_PUBLIC_STREAM_API_KEY`, `STREAM_SECRET_KEY`)
+   * Resend API Key (`RESEND_API_KEY`)
+   * Arcjet Key (`ARCJET_KEY`)
+
+3. **Database Setup**
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
+
+4. **Run Development Server**
+   ```bash
+   npm run dev
+   ```
+
+5. **Webhooks Setup (Important)**
+   In order for automated settlement to trigger locally, you must tunnel your local development environment using tools like ngrok or the Stream CLI so that Stream can push `call.ended` events to your `/api/webhooks/stream` route.

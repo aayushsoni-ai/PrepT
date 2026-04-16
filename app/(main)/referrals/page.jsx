@@ -1,9 +1,10 @@
 import { getReferralDashboard } from "@/actions/referrals";
 import PageHeader, { GrayTitle, SectionLabel } from "@/components/reusables";
-import { Gift, Users, Coins, Copy, CheckCircle2 } from "lucide-react";
+import { Gift, Users, Coins, Copy, CheckCircle2, MessageCircle, Twitter, Linkedin, Mail } from "lucide-react";
 import { CopyButton } from "./components/CopyButton";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { headers } from "next/headers";
 
 export default async function ReferralsPage() {
   const dashboard = await getReferralDashboard();
@@ -17,7 +18,11 @@ export default async function ReferralsPage() {
   }
 
   const { code, totalReferred, creditsEarned, pendingRewards, referrals } = dashboard;
-  const shareLink = `${process.env.NEXT_PUBLIC_APP_URL}/sign-up?ref=${code}`;
+  const headerList = await headers();
+  const host = headerList.get("host") || "localhost:3000";
+  const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`;
+  const shareLink = `${baseUrl}/sign-up?ref=${code}`;
 
   return (
     <main className="min-h-screen bg-black pb-24">
@@ -43,9 +48,9 @@ export default async function ReferralsPage() {
         {/* Your Code Section */}
         <div className="bg-[#0f0f11] border border-white/10 rounded-2xl p-8 flex flex-col gap-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-amber-400/5 blur-[100px] rounded-full pointer-events-none" />
-          
+
           <SectionLabel>Your Referral Link</SectionLabel>
-          
+
           <div className="flex flex-col sm:flex-row gap-4 max-w-2xl">
             <div className="flex-1 bg-[#141417] border border-white/10 rounded-xl p-4 flex items-center justify-between font-mono text-sm text-stone-300 relative z-10">
               <span className="truncate pr-4">{shareLink}</span>
@@ -65,6 +70,31 @@ export default async function ReferralsPage() {
             </div>
             <CopyButton text={code} label="Copy Code" />
           </div>
+
+          <div className="flex items-center gap-4 mt-4">
+            <div className="h-px bg-white/10 grow" />
+            <span className="text-[10px] text-stone-600 font-medium uppercase tracking-widest">Share Via</span>
+            <div className="h-px bg-white/10 grow" />
+          </div>
+
+          <div className="flex flex-wrap justify-center sm:justify-start gap-3 w-full max-w-2xl relative z-10">
+            <a href={`https://wa.me/?text=${encodeURIComponent("Level up your tech interviews on Prept! Get a free credit here: " + shareLink)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 border border-[#25D366]/20 rounded-xl transition-all duration-200">
+              <MessageCircle size={16} />
+              <span className="text-xs font-medium">WhatsApp</span>
+            </a>
+            <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareLink)}&text=${encodeURIComponent("Join me on Prept to prepare for your tech interviews!")}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-[#1DA1F2]/10 text-[#1DA1F2] hover:bg-[#1DA1F2]/20 border border-[#1DA1F2]/20 rounded-xl transition-all duration-200">
+              <Twitter size={16} />
+              <span className="text-xs font-medium">Twitter</span>
+            </a>
+            <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareLink)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-[#0A66C2]/10 text-[#0A66C2] hover:bg-[#0A66C2]/20 border border-[#0A66C2]/20 rounded-xl transition-all duration-200">
+              <Linkedin size={16} />
+              <span className="text-xs font-medium">LinkedIn</span>
+            </a>
+            <a href={`mailto:?subject=${encodeURIComponent("Join me on Prept!")}&body=${encodeURIComponent("Hey, I've been using Prept to practice my interviews. Use my link to get a free credit: " + shareLink)}`} className="flex items-center gap-2 px-4 py-2 bg-white/5 text-stone-300 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+              <Mail size={16} />
+              <span className="text-xs font-medium">Email</span>
+            </a>
+          </div>
         </div>
 
         {/* Stats Grid */}
@@ -76,7 +106,7 @@ export default async function ReferralsPage() {
             <p className="text-3xl font-serif text-stone-200">{totalReferred}</p>
             <p className="text-sm text-stone-500 font-medium">Friends Invited</p>
           </div>
-          
+
           <div className="bg-[#0f0f11] border border-amber-400/20 rounded-2xl p-6 flex flex-col gap-2 relative overflow-hidden">
             <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-amber-400/10 blur-[40px] rounded-full" />
             <div className="w-10 h-10 bg-amber-400/10 border border-amber-400/20 rounded-xl flex items-center justify-center text-amber-400 mb-2 relative z-10">
@@ -98,7 +128,7 @@ export default async function ReferralsPage() {
         {/* Referral History */}
         <div className="flex flex-col gap-6">
           <SectionLabel>Your Referrals</SectionLabel>
-          
+
           {referrals.length === 0 ? (
             <div className="text-center py-12 border border-white/5 border-dashed rounded-2xl bg-[#0f0f11]">
               <p className="text-stone-500 text-sm">You haven't referred anyone yet.</p>
@@ -119,7 +149,7 @@ export default async function ReferralsPage() {
                       <p className="text-xs text-stone-500">Joined {new Date(ref.createdAt).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-3">
                     {ref.status === "REWARDED" ? (
                       <>

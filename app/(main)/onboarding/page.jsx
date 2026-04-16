@@ -28,9 +28,9 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (data && !loading) {
-      router.push(role === "INTERVIEWER" ? "/dashboard" : "/explore");
+      window.location.href = role === "INTERVIEWER" ? "/dashboard" : "/explore";
     }
-  }, [data, router]);
+  }, [data, loading, role]);
 
   const toggleCategory = (val) => {
     setForm((prev) => ({

@@ -31,7 +31,7 @@ export default function RootLayout({ children }) {
         theme: dark,
       }}
     >
-      <html lang="en" suppressHydrationWarning>
+      <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
         <head />
         <body className={`${lora.variable} ${dmSans.variable} font-sans`}>
           <ThemeProvider

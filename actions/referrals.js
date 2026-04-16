@@ -107,11 +107,26 @@ export const processReferralReward = async (refereeId) => {
         data: { status: "REWARDED", rewardedAt: new Date() },
       });
 
-      // 2. Award Referrer (if interviewee, they get credits)
+      // 2. Award Referrer
       if (referral.referrer.role === "INTERVIEWEE") {
+        // Interviewees get standard credits to book sessions
         await tx.user.update({
           where: { id: referral.referrerId },
           data: { credits: { increment: referral.referrerReward } },
+        });
+
+        await tx.creditTransaction.create({
+          data: {
+            userId: referral.referrerId,
+            amount: referral.referrerReward,
+            type: "REFERRAL_REWARD",
+          },
+        });
+      } else if (referral.referrer.role === "INTERVIEWER") {
+        // Interviewers get withdrawable creditBalance
+        await tx.user.update({
+          where: { id: referral.referrerId },
+          data: { creditBalance: { increment: referral.referrerReward } },
         });
 
         await tx.creditTransaction.create({
@@ -166,6 +181,19 @@ export const getReferralDashboard = async () => {
   });
 
   if (!dbUser) return null;
+
+  // Auto-process any pending referrals that missed the webhook
+  const pending = dbUser.referralsSent.filter((r) => r.status === "PENDING");
+  for (const ref of pending) {
+    const completedBooking = await db.booking.findFirst({
+      where: { intervieweeId: ref.refereeId, status: "COMPLETED" },
+    });
+
+    if (completedBooking) {
+      await processReferralReward(ref.refereeId);
+      ref.status = "REWARDED"; // update local array for accurate dashboard count
+    }
+  }
 
   // Auto-generate if missing
   let code = dbUser.referralCode;

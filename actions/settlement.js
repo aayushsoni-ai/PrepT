@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/prisma";
+import { processReferralReward } from "./referrals";
 
 // Threshold in minutes for someone to be considered "present"
 const PRESENCE_THRESHOLD_MINUTES = 5;
@@ -146,6 +147,11 @@ export const settleCall = async (bookingId) => {
         });
       }
     });
+
+    // Automatically reward the referrer if the referee successfully completes their session
+    if (intervieweeAttended && interviewerAttended) {
+      await processReferralReward(booking.intervieweeId);
+    }
 
     return { success: true };
   } catch (error) {
