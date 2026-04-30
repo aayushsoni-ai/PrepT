@@ -192,24 +192,30 @@ export async function POST(request) {
       const categories =
         booking.interviewer.categories?.join(", ") ?? "General";
 
-      const prompt = `You are an expert technical interviewer evaluating a mock interview.
+      const prompt = `You are an elite Staff Engineer and expert technical interviewer evaluating a mock interview.
 
-Interview categories: ${categories}
+Interview Categories/Domain: ${categories}
 Interviewer: ${booking.interviewer.name}
 Candidate: ${booking.interviewee.name}
 
 TRANSCRIPT:
 ${transcript}
 
-Analyze the candidate's performance. Respond ONLY with a valid JSON object, no markdown, no backticks, no explanation:
+Task: Analyze the candidate's performance with deep, hyper-specific feedback. 
+CRITICAL RULES:
+1. Do NOT give generic, cookie-cutter statements. 
+2. You MUST cite specific answers, quote the candidate, and point out exact technical inaccuracies or brilliant approaches from the transcript. 
+3. If the transcript is empty, too short, or lacks technical depth, explicitly state that there was not enough data to evaluate instead of making things up.
+
+Analyze and output responding ONLY with a valid JSON object, no markdown, no backticks, no explanation:
 {
-  "summary": "2-3 sentence overall summary of the session",
-  "technical": "Assessment of technical knowledge and accuracy",
-  "communication": "Assessment of clarity, structure, and communication style",
-  "problemSolving": "Assessment of problem-solving approach and thought process",
-  "recommendation": "HIRE / CONSIDER / NO_HIRE with a one-sentence reason",
-  "strengths": ["strength 1", "strength 2", "strength 3"],
-  "improvements": ["improvement 1", "improvement 2", "improvement 3"],
+  "summary": "A highly specific 2-3 sentence summary referencing the exact topics discussed in the session.",
+  "technical": "Detailed evaluation citing specific technical concepts the candidate got right or wrong based on the transcript.",
+  "communication": "Evaluation of their clarity and structure, citing a specific moment they explained something well or poorly.",
+  "problemSolving": "Analysis of their thought process and approach, pointing to exactly how they tackled the specific problem presented.",
+  "recommendation": "HIRE / CONSIDER / NO_HIRE with a one-sentence reason citing their strongest or weakest factor.",
+  "strengths": ["Highly actionable, specific strength 1", "Highly actionable, specific strength 2", "Highly actionable, specific strength 3"],
+  "improvements": ["Very specific, actionable improvement 1", "Very specific, actionable improvement 2", "Very specific, actionable improvement 3"],
   "overallRating": "POOR or AVERAGE or GOOD or EXCELLENT"
 }`;
 

@@ -10,7 +10,7 @@ PrepT is a comprehensive, production-ready marketplace that connects job seekers
 * **Expert Discovery**: Explore a rich directory of vetted interviewers from top tech companies. Filter by domain including Frontend, Backend, System Design, DSA, Behavioral, and Mobile.
 * **Credit-Based Booking System**: Purchase or earn credits to book tailored 45-minute sessions. Different interviewers can dynamically set their own credit rates.
 * **Seamless Video Calls**: Integrated with Stream Video for flawless, low-latency, and recorded 1:1 interview sessions right in the browser.
-* **AI-Generated Summary & Feedback**: Automatically process session transcripts to receive unparalleled AI feedback breaking down Technical skills, Communication proficiency, Problem-Solving abilities, and exact improvement roadmaps.
+* **AI-Generated Summary & Feedback**: Our AI analyzes your exact conversational transcript to generate deep, actionable feedback across Technical, Communication, and Problem-Solving metrics.
 * **Review & Rating System**: Rate your experience post-call to help maintain the quality of the marketplace.
 
 ### For Industry Experts (Interviewers)
