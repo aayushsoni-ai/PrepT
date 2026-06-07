@@ -58,7 +58,7 @@ export const getInterviewerProfile = async (interviewerId) => {
   }
 };
 
-export const bookSlot = async ({ interviewerId, startTime, endTime }) => {
+export const bookSlot = async ({ interviewerId, startTime, endTime, planId }) => {
   const user = await currentUser();
   if (!user) throw new Error("Unauthorized");
 
@@ -78,7 +78,18 @@ export const bookSlot = async ({ interviewerId, startTime, endTime }) => {
   if (!interviewer || interviewer.role !== "INTERVIEWER")
     throw new Error("Interviewer not found");
 
+  // ── Determine credits from plan or flat rate ──────────────────────────────
   let credits = interviewer.creditRate ?? 10;
+  let resolvedPlanId = null;
+
+  if (planId) {
+    const plan = await db.interviewPlan.findUnique({
+      where: { id: planId, interviewerId, isActive: true },
+    });
+    if (!plan) throw new Error("Selected plan not found or no longer active.");
+    credits = plan.creditCost;
+    resolvedPlanId = plan.id;
+  }
 
   if (dbUser.credits < credits)
     throw new Error("Insufficient credits. Please upgrade your plan.");
@@ -107,6 +118,7 @@ export const bookSlot = async ({ interviewerId, startTime, endTime }) => {
           endTime: new Date(endTime),
           status: "PENDING",
           creditsCharged: credits,
+          ...(resolvedPlanId && { planId: resolvedPlanId }),
         },
       });
 

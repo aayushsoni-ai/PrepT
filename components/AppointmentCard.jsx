@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Clock, Video, Sparkles, Check, X, Star } from "lucide-react";
+import { Calendar, Clock, Video, Sparkles, Check, X, Star, Shield, Brain } from "lucide-react";
 import { FeedbackModal } from "./FeedbackModal";
 import { ReviewModal } from "./ReviewModal";
 import { formatDate, formatDuration, formatTime } from "@/lib/helpers";
@@ -31,6 +31,8 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
     recordingUrl,
     feedback,
     review,
+    settlementStatus,
+    aiSummary,
   } = booking;
 
   const handleStatusUpdate = async (newStatus) => {
@@ -192,6 +194,33 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
           </div>
         </div>
 
+        {/* Settlement status badge */}
+        {mode === "interviewee" && settlementStatus && (
+          <div className="flex items-center gap-2">
+            {settlementStatus === "HELD" && (
+              <Badge variant="outline" className="border-yellow-500/20 bg-yellow-500/5 text-yellow-400 text-xs">
+                ⏳ Credits Held
+              </Badge>
+            )}
+            {settlementStatus === "SETTLED" && (
+              <Badge variant="outline" className="border-green-500/20 bg-green-500/5 text-green-400 text-xs">
+                ✓ Settled
+              </Badge>
+            )}
+            {settlementStatus === "REFUNDED" && (
+              <Badge variant="outline" className="border-blue-500/20 bg-blue-500/5 text-blue-400 text-xs">
+                ↩ Refunded
+              </Badge>
+            )}
+            {settlementStatus === "DISPUTED" && (
+              <Badge variant="outline" className="border-red-500/20 bg-red-500/5 text-red-400 text-xs">
+                ⚠ Disputed
+              </Badge>
+            )}
+          </div>
+        )}
+
+
         {feedback?.summary && (
           <div className="rounded-xl border border-white/8 bg-[#141417] px-4 py-3 flex flex-col gap-1.5">
             <p className="text-[10px] font-semibold text-stone-600 tracking-widest uppercase">
@@ -202,6 +231,8 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
             </p>
           </div>
         )}
+
+
 
         <div className="flex items-center gap-2 flex-wrap pt-1">
           {isPending && mode === "interviewer" && !isPast && (
@@ -266,6 +297,23 @@ export function AppointmentCard({ booking, mode, isPast = false }) {
                 </Badge>
               </>
             )}
+
+          {/* View AI Report button */}
+          {aiSummary?.status === "COMPLETED" && mode === "interviewee" && (
+            <Button variant="outline" size="sm" className="gap-1.5 border-purple-400/20 text-purple-400 hover:bg-purple-400/10 hover:border-purple-400/40" asChild>
+              <Link href={`/appointments/${bookingId}/ai-report`}>
+                <Brain size={12} />
+                AI Report
+              </Link>
+            </Button>
+          )}
+
+          {aiSummary?.status === "PROCESSING" && mode === "interviewee" && (
+            <Badge variant="outline" className="border-purple-400/15 text-purple-400/60 text-xs gap-1">
+              <Brain size={10} />
+              AI processing...
+            </Badge>
+          )}
 
           {/* Leave Review — interviewee only, completed sessions, no existing review */}
           {mode === "interviewee" &&

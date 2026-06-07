@@ -6,12 +6,14 @@ import { Wallet, ClipboardList, Clock, ChevronDown, Tag } from "lucide-react";
 import EarningsSection from "./EarningsSection";
 import AppointmentsSection from "./AppointmentsSection";
 import AvailabilitySection from "./AvailabilitySection";
+import PricingSection from "@/components/PricingSection";
 
 export default function DashboardControls({
   appointments,
   availability,
   stats,
   withdrawalHistory,
+  plans = [],
 }) {
   const [activeTab, setActiveTab] = useState("earnings");
   const [isOpen, setIsOpen] = useState(false);
@@ -34,6 +36,12 @@ export default function DashboardControls({
       label: "Availability",
       icon: <Clock size={18} className="text-amber-400" />,
       component: <AvailabilitySection initial={availability} />,
+    },
+    {
+      id: "pricing",
+      label: "Pricing",
+      icon: <Tag size={18} className="text-amber-400" />,
+      component: <PricingSection initialPlans={plans} />,
     },
   ];
 

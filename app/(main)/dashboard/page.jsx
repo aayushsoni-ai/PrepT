@@ -14,6 +14,7 @@ import EarningsSection from "./components/EarningsSection";
 import DashboardControls from "./components/DashboardControls";
 import { ClipboardList, Clock, Wallet } from "lucide-react";
 import { getCurrentUser } from "@/actions/user";
+import { getMyPlans } from "@/actions/pricing";
 
 export default async function InterviewerDashboardPage() {
   const user = await currentUser();
@@ -21,12 +22,13 @@ export default async function InterviewerDashboardPage() {
 
   const dbUser = await getCurrentUser();
 
-  const [availability, appointments, stats, withdrawalHistory] =
+  const [availability, appointments, stats, withdrawalHistory, plans] =
     await Promise.all([
       getAvailability(),
       getInterviewerAppointments(),
       getInterviewerStats(),
       getWithdrawalHistory(),
+      getMyPlans(),
     ]);
 
   return (
@@ -55,6 +57,7 @@ export default async function InterviewerDashboardPage() {
         appointments={appointments}
         availability={availability}
         stats={stats}
+        plans={plans}
       />
     </main>
   );

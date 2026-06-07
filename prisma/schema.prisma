@@ -146,6 +146,7 @@ model User {
 
   referralsSent         Referral[]           @relation("ReferralsSent")
   referralsReceived     Referral[]           @relation("ReferralsReceived")
+  plans                 InterviewPlan[]
 }
 
 // ─── AVAILABILITY ────────────────────────────────────────
@@ -189,6 +190,10 @@ model Booking {
   intervieweeDuration Int    @default(0) // seconds
 
 
+
+  // plan (Phase 4)
+  planId         String?
+  plan           InterviewPlan? @relation(fields: [planId], references: [id])
 
   // ─── relations ──────────────────────────────────────
   feedback       Feedback?
@@ -347,6 +352,35 @@ model AISummary {
   createdAt DateTime @default(now())
 
   @@index([status])
+}
+
+// ─── INTERVIEW PLANS (Dynamic Pricing — Phase 4) ─────────
+
+model InterviewPlan {
+  id            String   @id @default(uuid())
+  interviewerId String
+  interviewer   User     @relation(fields: [interviewerId], references: [id], onDelete: Cascade)
+
+  name          String            // "30 min Quick Mock"
+  description   String?
+  durationMins  Int               // 30, 60, 90
+  creditCost    Int               // price in credits
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+
+  // Discount
+  discountPercent  Int?           // 0-100
+  discountEndsAt   DateTime?
+
+  // Bundle
+  bundleSize    Int?              // e.g., buy 3 sessions
+  bundlePrice   Int?              // discounted total for bundle
+
+  bookings      Booking[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([interviewerId, isActive])
 }
 
 // ─── CREDIT TRANSACTIONS ─────────────────────────────────
