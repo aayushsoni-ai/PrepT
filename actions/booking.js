@@ -11,6 +11,8 @@ import { InterviewBookingEmail } from "@/emails/InterviewBookingEmail";
 import { InterviewConfirmedEmail } from "@/emails/InterviewConfirmedEmail";
 import { InterviewAcceptedEmail } from "@/emails/InterviewAcceptedEmail";
 import { InterviewRejectedEmail } from "@/emails/InterviewRejectedEmail";
+import { InterviewReminderEmail } from "@/emails/InterviewReminderEmail";
+import { BookingExpiredEmail } from "@/emails/BookingExpiredEmail";
 import { render } from "@react-email/render";
 import { settleCall } from "./settlement";
 
@@ -158,12 +160,20 @@ export const bookSlot = async ({ interviewerId, startTime, endTime, planId }) =>
         })
       );
 
-      await sendMail({
+      const emailInfo = await sendMail({
         from: process.env.EMAIL_FROM,
         to: interviewer.email,
         subject: `New Interview Request from ${dbUser.name ?? "a candidate"}`,
         html,
       });
+
+      // Save the email Message-ID for threading reminder as a reply
+      if (emailInfo?.messageId) {
+        await db.booking.update({
+          where: { id: booking.id },
+          data: { notificationMessageId: emailInfo.messageId },
+        });
+      }
     } catch (emailErr) {
       console.error("Booking notification email failed:", emailErr);
     }
@@ -363,14 +373,82 @@ export const updateBookingStatus = async (bookingId, status) => {
 
 export const cleanupBookings = async () => {
   const now = new Date();
+  const REMINDER_HOURS = 12;
+  const SLA_HOURS = 24;
+  const reminderDeadline = new Date(now.getTime() - REMINDER_HOURS * 60 * 60 * 1000);
+  const slaDeadline = new Date(now.getTime() - SLA_HOURS * 60 * 60 * 1000);
 
   try {
-    // 1. Mark past PENDING bookings as CANCELLED and refund credits
+    // ── 1. Send 12h reminder to interviewers who haven't responded ─────────
+    const needsReminder = await db.booking.findMany({
+      where: {
+        status: "PENDING",
+        reminderSent: false,
+        createdAt: { lt: reminderDeadline },
+        startTime: { gt: now }, // only future bookings
+      },
+      include: { interviewer: true, interviewee: true },
+    });
+
+    for (const booking of needsReminder) {
+      try {
+        const hoursLeft = Math.max(
+          0,
+          Math.round((SLA_HOURS - REMINDER_HOURS) -
+            (now.getTime() - new Date(booking.createdAt).getTime() - REMINDER_HOURS * 60 * 60 * 1000) / (60 * 60 * 1000))
+        ) || (SLA_HOURS - REMINDER_HOURS);
+
+        const acceptUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/bookings/${booking.id}/accept`;
+        const rejectUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/bookings/${booking.id}/reject`;
+        const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`;
+
+        const html = await render(
+          InterviewReminderEmail({
+            intervieweeName: booking.interviewee?.name ?? "A candidate",
+            interviewerName: booking.interviewer?.name ?? "Interviewer",
+            startTime: new Date(booking.startTime).toLocaleString(),
+            endTime: new Date(booking.endTime).toLocaleString(),
+            credits: booking.creditsCharged,
+            hoursLeft,
+            acceptUrl,
+            rejectUrl,
+            dashboardUrl,
+          })
+        );
+
+        const intervieweeName = booking.interviewee?.name ?? "a candidate";
+
+        await sendMail({
+          from: process.env.EMAIL_FROM,
+          to: booking.interviewer.email,
+          subject: `Re: New Interview Request from ${intervieweeName}`,
+          html,
+          // Thread under the original booking email
+          ...(booking.notificationMessageId && {
+            inReplyTo: booking.notificationMessageId,
+            references: booking.notificationMessageId,
+          }),
+        });
+
+        await db.booking.update({
+          where: { id: booking.id },
+          data: { reminderSent: true },
+        });
+      } catch (emailErr) {
+        console.error(`Reminder email failed for booking ${booking.id}:`, emailErr);
+      }
+    }
+
+    // ── 2. Auto-cancel PENDING bookings (startTime passed OR 24h SLA expired) ─
     const expiredPending = await db.booking.findMany({
       where: {
         status: "PENDING",
-        startTime: { lt: now },
+        OR: [
+          { startTime: { lt: now } },       // interview time already passed
+          { createdAt: { lt: slaDeadline } }, // interviewer didn't respond in 24h
+        ],
       },
+      include: { interviewer: true, interviewee: true },
     });
 
     for (const booking of expiredPending) {
@@ -394,9 +472,33 @@ export const cleanupBookings = async () => {
           },
         });
       });
+
+      // 📧 Notify interviewee about auto-cancellation
+      try {
+        const browsUrl = `${process.env.NEXT_PUBLIC_APP_URL}/interviewers`;
+        const html = await render(
+          BookingExpiredEmail({
+            intervieweeName: booking.interviewee?.name ?? "Candidate",
+            interviewerName: booking.interviewer?.name ?? "the interviewer",
+            startTime: new Date(booking.startTime).toLocaleString(),
+            endTime: new Date(booking.endTime).toLocaleString(),
+            creditsRefunded: booking.creditsCharged,
+            browsUrl,
+          })
+        );
+
+        await sendMail({
+          from: process.env.EMAIL_FROM,
+          to: booking.interviewee.email,
+          subject: `Booking Request Expired — ${booking.creditsCharged} credits refunded`,
+          html,
+        });
+      } catch (emailErr) {
+        console.error(`Expiry notification failed for booking ${booking.id}:`, emailErr);
+      }
     }
 
-    // 2. Mark past SCHEDULED bookings via Settlement
+    // ── 3. Mark past SCHEDULED bookings via Settlement ─────────────────────
     const pastScheduled = await db.booking.findMany({
       where: {
         status: "SCHEDULED",

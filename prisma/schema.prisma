@@ -189,7 +189,9 @@ model Booking {
   interviewerDuration Int    @default(0) // seconds
   intervieweeDuration Int    @default(0) // seconds
 
-
+  // SLA reminder system
+  reminderSent           Boolean @default(false)  // 12h reminder sent?
+  notificationMessageId  String?                  // email Message-ID for threading
 
   // plan (Phase 4)
   planId         String?
