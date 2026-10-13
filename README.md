@@ -2,7 +2,14 @@
 
 # PrepT - Advanced AI-Powered Mock Interview Platform
 
-PrepT is a comprehensive, production-ready marketplace that connects job seekers (Interviewees) with industry experts (Interviewers) for high-quality mock interviews. Built with Next.js 14, PrepT leverages cutting-edge technology including real-time video streaming, AI-powered post-interview feedback, automated credit-based settlements, and a robust referral engine.
+[![CI/CD Pipeline](https://github.com/aayushsoni-ai/PrepT/actions/workflows/deploy.yml/badge.svg)](https://github.com/aayushsoni-ai/PrepT/actions/workflows/deploy.yml)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-AWS%20EC2-orange)](https://prept.duckdns.org)
+[![Database](https://img.shields.io/badge/Database-Supabase%20pgvector%20(HNSW)-green)](https://supabase.com)
+[![Docker](https://img.shields.io/badge/Docker-Multi--stage%20Alpine-blue)](https://docker.com)
+
+> 🚀 **Live Production URL:** [https://prept.duckdns.org](https://prept.duckdns.org)
+
+PrepT is a comprehensive, production-ready marketplace that connects job seekers (Interviewees) with industry experts (Interviewers) for high-quality mock interviews. Built with Next.js, PrepT leverages cutting-edge technology including real-time video streaming, RAG-grounded AI evaluation with pgvector, automated credit-based settlements, and a robust referral engine.
 
 ## 🚀 Key Features
 
