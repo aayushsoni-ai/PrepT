@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "prisma generate",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:rag": "node scripts/test-production-rag.js"
   },
   "dependencies": {
     "@arcjet/next": "^1.3.0",

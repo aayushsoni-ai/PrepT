@@ -82,8 +82,17 @@ export const processAIReview = async (bookingId) => {
       }
     }
 
-    if (!transcriptText) {
-      transcriptText = "(No transcript available — evaluate based on session metadata only)";
+    // Guard: if no meaningful transcript, fail fast rather than generate generic report
+    const speechTurnCount = transcriptText.split("\n").filter(Boolean).length;
+    if (!transcriptText || speechTurnCount < 5) {
+      await db.aISummary.update({
+        where: { id: summary.id },
+        data: {
+          status: "FAILED",
+          errorMessage: "Transcript too short or audio recording had no detected speech. Cannot generate a meaningful report.",
+        },
+      });
+      return { success: false, error: "Insufficient transcript data" };
     }
 
     const interviewType = booking.interviewer.categories?.join(", ") ?? "General";
@@ -91,22 +100,53 @@ export const processAIReview = async (bookingId) => {
       ? Math.round((new Date(booking.endTime) - new Date(booking.startTime)) / 60000)
       : 60;
 
+    // ── RAG: Retrieve evaluation rubrics for this interview's domain ─────────
+    let rubricsContext = "";
+    try {
+      const { getRubricsForTopics } = await import("@/lib/rag");
+      const primaryCategory = booking.interviewer.categories?.[0] ?? null;
+      const rubrics = await getRubricsForTopics(
+        `${interviewType} interview evaluation rubric`,
+        primaryCategory,
+        4
+      );
+      if (rubrics.length > 0) {
+        rubricsContext = rubrics
+          .map((r, i) => `[Rubric ${i + 1}] ${r.title}\n${r.answer}`)
+          .join("\n\n");
+        console.log(`[ai-review] RAG retrieved ${rubrics.length} rubrics for ${interviewType}`);
+      }
+    } catch (ragErr) {
+      console.warn("[ai-review] RAG rubric retrieval failed, continuing without rubrics:", ragErr.message);
+    }
+
     // Call Gemini
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
-    const prompt = `You are an expert technical interview evaluator.
-Analyze the following interview transcript and session data.
+    const prompt = `You are an elite Staff Engineer conducting a rigorous post-interview evaluation.
 
 Interview Type: ${interviewType}
 Duration: ${durationMin} minutes
 Interviewer: ${booking.interviewer.name}
 Candidate: ${booking.interviewee.name}
 
-TRANSCRIPT:
+${
+  rubricsContext
+    ? `EVALUATION RUBRICS (Official engineering standards — use these to ground your scores):
+${rubricsContext}
+
+`
+    : ""
+}TRANSCRIPT:
 ${transcriptText}
 
-Generate a comprehensive, honest evaluation. Be specific — reference actual moments from the transcript. Avoid generic praise. If the candidate struggled, say so clearly with constructive suggestions. If there is no meaningful transcript data, say the session had insufficient data and give mid-range scores.
+CRITICAL EVALUATION RULES:
+1. Every score MUST be justified by citing a specific moment or quote from the transcript.
+2. Do NOT use generic phrases like "good communication" or "needs improvement" without evidence.
+3. If rubrics are provided above, evaluate the candidate's answers strictly against those rubric criteria.
+4. If the candidate evaded a question or gave a vague answer, call it out directly with the specific question context.
+5. missedConcepts must list exact technical concepts the candidate should have mentioned but did not.
 
 Respond ONLY with valid JSON (no markdown, no backticks, no explanation):
 {
@@ -115,13 +155,13 @@ Respond ONLY with valid JSON (no markdown, no backticks, no explanation):
   "communicationScore": <1-100>,
   "problemSolvingScore": <1-100>,
   "confidenceScore": <1-100>,
-  "technicalFeedback": "...",
-  "communicationFeedback": "...",
-  "strengthsShown": ["specific strength 1", "specific strength 2"],
-  "weakAreas": ["specific weakness 1", "specific weakness 2"],
-  "missedConcepts": ["concept they should have known"],
-  "suggestedTopics": ["topic to study"],
-  "improvementRoadmap": "Personalized 2-4 week plan...",
+  "technicalFeedback": "Cite specific transcript moments. Reference rubric criteria if provided.",
+  "communicationFeedback": "Cite a specific moment they explained something clearly or poorly.",
+  "strengthsShown": ["Specific strength backed by a transcript quote"],
+  "weakAreas": ["Specific weakness with the exact topic or question context"],
+  "missedConcepts": ["Exact technical concept not mentioned that rubric requires"],
+  "suggestedTopics": ["Specific topic to study based on identified gaps"],
+  "improvementRoadmap": "Personalized 2-4 week action plan referencing the specific gaps found.",
   "readinessLevel": "Not Ready | Getting There | Almost Ready | Interview Ready"
 }`;
 

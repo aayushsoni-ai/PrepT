@@ -1,0 +1,25 @@
+# Git
+.git
+.gitignore
+
+# Dependencies & Build artifacts
+node_modules
+.next
+out
+
+# Local Environment & Secrets
+.env*.local
+.env
+
+# Scripts & temporary databases
+scripts/test-production-rag.js
+dump.sql
+final_schema.sql
+*.log
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+README.md
