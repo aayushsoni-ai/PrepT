@@ -11,210 +11,589 @@
 
 > 🚀 **Live Production Deployment:** [https://prept.duckdns.org](https://prept.duckdns.org)
 
-**PrepT** is a full-stack, enterprise-grade mock interview marketplace connecting job seekers (*Interviewees*) with vetted industry engineers (*Interviewers*). Built on **Next.js 16 (Turbopack)**, the platform integrates real-time video streaming, a **RAG-powered AI Copilot & Evaluation Engine** (leveraging PostgreSQL `pgvector` with **HNSW** indexing and Gemini 768-dim embeddings), automated escrow credit settlements, and an automated **GitHub Actions CI/CD pipeline** deployed to **AWS EC2**.
+---
+
+## 📑 Table of Contents
+1. [Project Overview](#-project-overview)
+2. [High-Level Design (HLD)](#-high-level-design-hld)
+3. [End-to-End Business & Technical Workflows](#-end-to-end-business--technical-workflows)
+4. [RAG Architecture & Benchmark Audit](#-rag-architecture--benchmark-audit)
+5. [Database Schema & Data Architecture](#-database-schema--data-architecture)
+6. [Categorized Tech Stack & Architectural Decisions](#-categorized-tech-stack--architectural-decisions)
+7. [DevOps, Cloud & Production Deployment](#-devops-cloud--production-deployment)
+8. [Local Development Guide](#-local-development-guide)
 
 ---
 
-## 🏛 System Architecture
+## 🎯 Project Overview
+
+**PrepT** is a full-stack, enterprise-grade marketplace connecting job seekers (*Interviewees*) with vetted industry experts (*Interviewers*) for real-time mock interviews. 
+
+Unlike generic AI chatbot mock interviewers, PrepT facilitates **human-to-human interviews** augmented by an **intelligent AI subsystem**:
+* **Live In-Call Copilot:** Powered by a **Retrieval-Augmented Generation (RAG)** pipeline utilizing PostgreSQL `pgvector` with **HNSW** indexing and Gemini 768-dimensional embeddings to surface relevant, role-specific questions and evaluation rubrics in **< 40ms**.
+* **Evidence-Grounded Feedback:** Analyzes full conversational transcripts against engineering rubrics, citing verbatim quotes while eliminating LLM hallucinations through speech-turn guards.
+* **Automated Financial Escrow:** Holds credits in escrow upon booking, tracks WebRTC attendance presence via webhooks to prevent fraud, and auto-settles payouts to interviewers.
+* **Production Cloud Deployment:** Containerized with multi-stage Docker builds and hosted on **AWS EC2** behind an **Nginx** reverse proxy with automated **Let's Encrypt SSL** and a **GitHub Actions CI/CD** pipeline.
+
+---
+
+## 🏛 High-Level Design (HLD)
+
+### 1. System Topology & Architecture Diagram
 
 ```mermaid
 flowchart TD
-    Client([User Browser]) -->|HTTPS:443| Nginx[Nginx Reverse Proxy + Let's Encrypt SSL]
-    Nginx -->|Port 3000| Docker[Docker Container: Next.js 16 Standalone]
-
-    subgraph AWS_EC2 ["AWS EC2 Cloud Host (c7i-flex.large)"]
-        Nginx
-        Docker
+    subgraph Client_Layer ["Client Layer"]
+        Browser["User Web Browser (Desktop / Mobile)"]
     end
 
-    subgraph External_Services ["External Cloud Services & APIs"]
-        Docker -->|Auth & Sessions| Clerk[Clerk Authentication]
-        Docker -->|WebRTC & Recordings| Stream[Stream Video & Chat SDK]
-        Docker -->|768-dim Embeddings & Review| Gemini[Google Gemini 2.5 Flash / embedding-001]
-        Docker -->|Transactional Emails| Resend[Resend & React Email]
-        Docker -->|Bot Protection & Rate Limiting| Arcjet[Arcjet Security Shield]
+    subgraph Edge_Security ["Edge & Reverse Proxy Layer (AWS EC2 Host)"]
+        Firewall["UFW Host Firewall (Ports 22, 80, 443)"]
+        Nginx["Nginx Reverse Proxy + Let's Encrypt TLS Termination"]
+        Firewall --> Nginx
     end
 
-    subgraph Data_Layer ["Data & Vector Layer"]
-        Docker -->|Prisma ORM & Raw SQL| Postgres[(Supabase PostgreSQL)]
-        Postgres -->|Cosine Similarity <=>| pgvector[pgvector KnowledgeBase: HNSW Index]
+    subgraph App_Container ["Application Server (Docker Container: Port 3000)"]
+        NextServer["Next.js 16 Standalone Server (Node.js 20 Alpine)"]
+        Middlewares["Auth & Security Middlewares (Clerk + Arcjet)"]
+        ServerActions["Next.js Server Actions & API Routes"]
+        RAGModule["RAG Retrieval Engine (lib/rag.js)"]
+        NextServer --> Middlewares --> ServerActions
+        ServerActions --> RAGModule
+    end
+
+    subgraph Managed_Cloud_Services ["External Managed Cloud Services"]
+        ClerkAuth["Clerk Auth (JWT & Session Management)"]
+        StreamSDK["Stream Video & Chat (WebRTC SFU & Audio Transcripts)"]
+        GeminiAPI["Google Gemini AI (gemini-2.5-flash-lite & gemini-embedding-001)"]
+        ResendMail["Resend & React Email (Transactional Notifications)"]
+        ArcjetSec["Arcjet Cloud (Bot Detection & Shield)"]
+    end
+
+    subgraph Database_Layer ["Database & Vector Store (Supabase Managed PostgreSQL)"]
+        PrismaRelational[("Relational Store (Users, Bookings, Escrow, Reviews)")]
+        pgvectorStore[("Vector Store (KnowledgeDocument: 768-dim Vectors)")]
+        HNSWIndex["HNSW Index (Hierarchical Navigable Small World)"]
+        pgvectorStore --- HNSWIndex
+    end
+
+    Browser -->|HTTPS :443| Firewall
+    Nginx -->|Proxy Pass :3000| NextServer
+
+    Middlewares -.-> ClerkAuth
+    Middlewares -.-> ArcjetSec
+    ServerActions --> PrismaRelational
+    RAGModule -->|Dense Embeddings| GeminiAPI
+    RAGModule -->|Cosine Distance <=>| pgvectorStore
+    ServerActions --> StreamSDK
+    ServerActions --> ResendMail
+```
+
+### 2. Architectural Layers & Responsibilities
+
+1. **Edge & Transport Layer:**
+   * **Nginx Reverse Proxy:** Terminates incoming SSL/TLS certificates issued by Let's Encrypt, buffers client requests, compresses assets with Gzip, and forwards traffic to the internal container on `http://127.0.0.1:3000`.
+   * **UFW Firewall:** Restricts inbound network access strictly to SSH (`22`), HTTP (`80`), and HTTPS (`443`).
+2. **Application Runtime Layer:**
+   * **Next.js 16 (Turbopack):** Combines Server Components (RSC) for minimal client bundles with Server Actions for zero-API-boilerplate mutations.
+   * **Multi-Stage Docker Container:** Packages the standalone Next.js server on Alpine Linux, running as an unprivileged user (`nextjs:nodejs`, UID `1001`).
+3. **AI & Vector Layer:**
+   * **Gemini Embedding Engine (`gemini-embedding-001`):** Generates 768-dimensional normalized dense vectors.
+   * **PostgreSQL `pgvector` with HNSW Index:** Performs sub-40ms cosine similarity searches (`ORDER BY embedding <=> $1::vector LIMIT K`) across 8 engineering domains.
+4. **Data Persistence & Ledger Layer:**
+   * **Prisma ORM with `@prisma/adapter-pg`:** Provides type-safe queries, connection pooling, and transactional integrity.
+   * **Double-Entry Style Ledger:** Credit movements are recorded in an append-only `CreditTransaction` table to prevent balance manipulation.
+
+---
+
+## 🔄 End-to-End Business & Technical Workflows
+
+### Workflow 1: Interview Booking & Escrow Hold
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Candidate as Interviewee
+    participant App as Next.js App
+    participant DB as PostgreSQL (Prisma)
+    participant Mail as Resend Service
+    actor Interviewer as Expert Interviewer
+
+    Candidate->>App: Selects Date, Time & Plan Tier
+    App->>DB: Check Candidate Credit Balance >= Plan Cost
+    alt Insufficient Credits
+        App-->>Candidate: Prompt Credit Top-Up Modal
+    else Sufficient Balance
+        App->>DB: BEGIN Transaction: Lock credits in escrow (SettlementStatus = HELD)
+        App->>DB: Create Booking record (Status = PENDING)
+        App->>DB: Log CreditTransaction (type = BOOKING_HELD)
+        App->>DB: COMMIT Transaction
+        App->>Mail: Dispatch booking notification email to Interviewer
+        Mail-->>Interviewer: Email with 1-click Accept / Reject links
+        App-->>Candidate: Display confirmation with calendar sync
     end
 ```
 
 ---
 
-## 🚀 Key Features
+### Workflow 2: Live Session, WebRTC & Real-Time RAG Copilot
 
-### 1. Peer-to-Peer Interview Marketplace
-* **Expert Discovery:** Explore and filter vetted interviewers across 8 technical domains (*Frontend, Backend, Fullstack, DSA, System Design, Behavioral, DevOps, Mobile*).
-* **Dynamic Multi-Tier Pricing:** Interviewers configure custom tiers (30-min quick mock, 60-min deep dive, multi-session bundles, and limited-time discounts).
-* **Real-Time Video & WebRTC:** High-performance video calls with in-browser chat, live screen sharing, cloud recording, and automated transcription via Stream Video.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Interviewer as Interviewer
+    participant App as Next.js Call Room
+    participant Stream as Stream Video SFU
+    participant RAG as RAG Engine (lib/rag.js)
+    participant pgvector as Supabase pgvector (HNSW)
+    participant Gemini as Google Gemini AI
 
-### 2. RAG AI Copilot & Evaluation Engine
-* **In-Call Question Retrieval:** Live copilot dynamically retrieves curated, role-specific questions from a vector knowledge base using cosine similarity search.
-* **Rubric-Grounded Scoring:** Evaluates candidate transcripts strictly against official FAANG-level engineering rubrics rather than generic LLM hallucinations.
-* **Anti-Hallucination Guardrails:** Automatically identifies insufficient or empty audio/transcripts (<5 turns) and rejects processing rather than fabricating ratings.
-* **Evidence-Based Feedback:** Every strength, weakness, missed concept, and roadmap item cites verbatim quotes and timestamps from the interview transcript.
-
-### 3. Smart Escrow & Automated Settlements
-* **Automated Fraud Prevention:** Holds candidate credits in escrow upon booking.
-* **Presence Tracking Webhooks:** Tracks `session_participant_joined` and `call.ended` events to verify attendance duration for both candidate and interviewer.
-* **Automated No-Show & Settlement Engine:** Auto-settles earnings to interviewer ledger or auto-refunds candidate credits in case of no-shows.
-* **Fiat Withdrawals:** Interviewers withdraw earnings via PayPal, Bank Transfer, or UPI with automated platform fee calculations.
+    Interviewer->>App: Joins Interview Call Room
+    App->>Stream: Initialize WebRTC Session (Audio, Video, Recording)
+    Interviewer->>App: Clicks "Generate Questions" in AI Copilot Panel
+    App->>RAG: getQuestionsForCategory(category, difficulty)
+    RAG->>Gemini: Generate 768-dim query embedding
+    Gemini-->>RAG: Returns float32[768] vector
+    RAG->>pgvector: SELECT title, content, answer WHERE type='QUESTION' ORDER BY embedding <=> vector LIMIT 12
+    pgvector-->>RAG: Returns top matching verified questions (< 40ms)
+    RAG->>Gemini: Prompt with Knowledge Base context to select & summarize 6 best questions
+    Gemini-->>App: Returns curated questions + evaluator answer criteria
+    App-->>Interviewer: Renders questions in real-time UI without video stream lag
+```
 
 ---
 
-## 🧠 RAG & Vector Search Architecture
+### Workflow 3: Automated Settlement & Presence Webhooks
 
-PrepT replaces traditional, static question generation with a **Retrieval-Augmented Generation (RAG)** pipeline powered by `pgvector`:
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Stream as Stream Webhook Gateway
+    participant Webhook as /api/webhooks/stream
+    participant Settlement as actions/settlement.js
+    participant DB as PostgreSQL DB
+    participant Mail as Resend Mail
 
+    Stream->>Webhook: POST call.ended (duration, participant sessions, recording)
+    Webhook->>DB: Query Booking by streamCallId
+    Webhook->>Settlement: settleCall(bookingId)
+    Settlement->>DB: Calculate Interviewer vs Candidate duration from AttendanceLog
+    alt Both attended >= required minimum duration
+        Settlement->>DB: Settle escrow (SettlementStatus = SETTLED)
+        Settlement->>DB: Credit interviewer ledger (creditBalance += creditsCharged)
+        Settlement->>DB: Log CreditTransaction (type = BOOKING_EARNING)
+        Settlement->>Mail: Send session completion & rating request
+    else Interviewer No-Show
+        Settlement->>DB: Refund candidate credits (SettlementStatus = REFUNDED)
+        Settlement->>DB: Increment interviewer noShowCount
+        Settlement->>DB: Log CreditTransaction (type = BOOKING_REFUND)
+    else Candidate No-Show
+        Settlement->>DB: Release held credits to interviewer (SettlementStatus = SETTLED)
+    end
 ```
-User Query / Category
-        │
-        ▼
-[ Gemini gemini-embedding-001 ] ──► Generates 768-Dimensional Dense Vector
-        │
-        ▼
-[ Supabase PostgreSQL ] ──────────► Cosine Similarity Search: ORDER BY embedding <=> $1::vector
-        │                            Utilizes HNSW (Hierarchical Navigable Small World) Index
-        ▼
-[ Top-K Curated Knowledge ] ──────► Real FAANG Questions & Official Evaluation Rubrics
-        │
-        ▼
-[ Gemini 2.5 Flash Prompt ] ──────► Synthesizes Context-Grounded Output (0% Hallucination)
+
+---
+
+### Workflow 4: RAG-Grounded Post-Call AI Review Generation
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Webhook as Stream Webhook
+    participant AIReview as actions/ai-review.js
+    participant RAG as RAG Engine
+    participant pgvector as Supabase pgvector
+    participant Gemini as Gemini 2.5 Flash
+    participant DB as PostgreSQL DB
+
+    Webhook->>AIReview: Trigger review on call.transcription_ready
+    AIReview->>Stream: Fetch full audio transcript text
+    AIReview->>AIReview: Check Transcript Guard: speechTurnCount >= 5
+    alt Insufficient Speech Turns (< 5)
+        AIReview->>DB: Update AISummary (status = FAILED, error = "Insufficient transcript")
+        Note over AIReview: Prevents fabricated hallucinated reviews
+    else Meaningful Transcript Available
+        AIReview->>RAG: getRubricsForTopics(interviewType, primaryCategory, 4)
+        RAG->>pgvector: Cosine query for official FAANG grading rubrics
+        pgvector-->>RAG: Returns rubric criteria (Frontend, Backend, System Design, etc.)
+        AIReview->>Gemini: Send prompt: Transcript + Rubric standards + Citation rules
+        Gemini-->>AIReview: Returns JSON evaluation (4 domain scores, strengths, quotes, gaps)
+        AIReview->>DB: Save AISummary (status = COMPLETED)
+    end
 ```
 
-### Production Benchmarks & Performance Metrics
+---
 
-Benchmarked across 20 production queries under simulated concurrent loads (`scripts/test-production-rag.js`):
+### Workflow 5: GitHub Actions CI/CD Deployment Pipeline
 
-| Metric | Measured Value | Standard Target | Status |
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Developer
+    participant GH as GitHub Repository
+    participant Actions as GitHub Actions Runner
+    participant EC2 as AWS EC2 Server
+    participant Docker as Docker Engine
+
+    Dev->>GH: git push origin main
+    GH->>Actions: Trigger CI/CD Workflow (.github/workflows/deploy.yml)
+    
+    rect rgb(240, 248, 255)
+        note over Actions: Job 1: Test & Build (CI)
+        Actions->>Actions: Install dependencies (npm ci)
+        Actions->>Actions: Generate Prisma Client (npx prisma generate)
+        Actions->>Actions: Run RAG Benchmark (npm run test:rag)
+        Actions->>Actions: Compile Next.js production build (npm run build)
+    end
+
+    rect rgb(245, 255, 245)
+        note over Actions, EC2: Job 2: Continuous Deployment (CD)
+        Actions->>EC2: SSH connection via appleboy/ssh-action using EC2_SSH_KEY
+        EC2->>EC2: git pull origin main
+        EC2->>Docker: docker compose up -d --build
+        Docker->>Docker: Build standalone Alpine image & start container
+        EC2->>Docker: docker image prune -f
+    end
+    
+    Actions-->>Dev: Pipeline Succeeded (Live at https://prept.duckdns.org)
+```
+
+---
+
+## 🧠 RAG Architecture & Benchmark Audit
+
+PrepT replaces non-deterministic LLM prompt generation with an exact **Retrieval-Augmented Generation (RAG)** pipeline.
+
+### Vector Knowledge Base Schema (Native PostgreSQL)
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS "KnowledgeDocument" (
+  "id"          TEXT         NOT NULL DEFAULT gen_random_uuid()::text,
+  "type"        TEXT         NOT NULL, -- 'QUESTION' | 'RUBRIC'
+  "title"       TEXT         NOT NULL,
+  "content"     TEXT         NOT NULL,
+  "answer"      TEXT,
+  "category"    TEXT         NOT NULL, -- 'FRONTEND', 'BACKEND', 'DSA', etc.
+  "difficulty"  TEXT         NOT NULL DEFAULT 'Mid',
+  "company"     TEXT,
+  "embedding"   vector(768)  NOT NULL,
+  "createdAt"   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT "KnowledgeDocument_pkey" PRIMARY KEY ("id")
+);
+
+-- HNSW Index for high-throughput, sub-40ms cosine similarity search
+CREATE INDEX IF NOT EXISTS "KnowledgeDocument_embedding_idx"
+  ON "KnowledgeDocument"
+  USING hnsw (embedding vector_cosine_ops);
+```
+
+### Production Benchmark Results (`scripts/test-production-rag.js`)
+
+Executed on live Supabase PostgreSQL infrastructure:
+
+| Benchmark Dimension | Measured Number | Industry Standard | Evaluation |
 | :--- | :--- | :--- | :--- |
-| **pgvector DB Query Time (HNSW)** | **37 ms (P50)** / **47 ms (P90)** | < 100 ms | **EXCEEDED ✓** |
-| **Gemini 768-dim Embedding Latency** | **474 ms (P50)** / **644 ms (P90)** | < 800 ms | **OPTIMAL ✓** |
-| **Total End-to-End RAG Pipeline** | **510 ms (P50)** / **711 ms (P90)** | < 1,000 ms | **OPTIMAL ✓** |
-| **Concurrent Throughput (QPS)** | **393.2 Queries / Second** | > 100 QPS | **STABLE ✓** |
-| **Concurrency Failure Rate** | **0.0% (100% Availability)** | < 1.0% | **ZERO DEFECTS ✓** |
-| **Semantic Precision Score** | **100.0% (> 0.74 Cosine Similarity)** | > 85% | **PERFECT RECALL ✓** |
-| **Node.js Memory Footprint** | **25.1 MB Heap / 189 MB RSS** | < 512 MB | **LIGHTWEIGHT ✓** |
+| **pgvector DB Query Time (HNSW)** | **37 ms (P50)** / **47 ms (P90)** | < 100 ms | **Sub-50ms Ultra Fast ✓** |
+| **Gemini 768-dim Embedding Latency** | **474 ms (P50)** / **644 ms (P90)** | < 800 ms | **Optimal External API Latency ✓** |
+| **Total End-to-End Pipeline Latency** | **510 ms (P50)** / **711 ms (P90)** | < 1,000 ms | **Seamless In-Call Response ✓** |
+| **Throughput (15 Concurrent Workers)** | **393.2 Queries / Second** | > 100 QPS | **High Concurrency Resilient ✓** |
+| **Stress Test Error Rate** | **0.0% (100% Availability)** | < 1.0% | **Zero Connection Drops ✓** |
+| **Cosine Precision Rate** | **100.0% (> 0.74 Cosine Score)** | > 85% | **Exact Domain Recall ✓** |
+| **Node.js Memory Footprint** | **25.1 MB Heap / 189 MB RSS** | < 512 MB | **Extremely Low Memory Profile ✓** |
 
 ---
 
-## 🗄 Database Schema Design
+## 🗄 Database Schema & Data Architecture
 
-PrepT utilizes a dual relational + vector schema managed with **Prisma ORM** and native **PostgreSQL `pgvector`**:
+### Entity-Relationship Diagram
 
 ```mermaid
 erDiagram
-    User ||--o{ Booking : "participates in"
-    User ||--o{ Availability : "sets schedule"
+    User {
+        String id PK
+        String clerkUserId UK
+        String email UK
+        String name
+        UserRole role
+        Int credits
+        Int creditBalance
+        Int creditRate
+        Float avgRating
+        Int totalReviews
+        Float completionRate
+        Int noShowCount
+        String referralCode UK
+    }
+
+    Availability {
+        String id PK
+        String interviewerId FK
+        DateTime startTime
+        DateTime endTime
+        AvailabilityStatus status
+    }
+
+    InterviewPlan {
+        String id PK
+        String interviewerId FK
+        String name
+        Int durationMins
+        Int creditCost
+        Boolean isActive
+        Int discountPercent
+        Int bundleSize
+        Int bundlePrice
+    }
+
+    Booking {
+        String id PK
+        String intervieweeId FK
+        String interviewerId FK
+        String planId FK
+        DateTime startTime
+        DateTime endTime
+        BookingStatus status
+        Int creditsCharged
+        String streamCallId UK
+        SettlementStatus settlementStatus
+        Int heldAmount
+        Boolean interviewerJoined
+        Boolean intervieweeJoined
+        Int interviewerDuration
+        Int intervieweeDuration
+    }
+
+    AttendanceLog {
+        String id PK
+        String bookingId FK
+        String userId FK
+        AttendanceEvent event
+        DateTime timestamp
+    }
+
+    AISummary {
+        String id PK
+        String bookingId FK
+        Int overallScore
+        Int technicalScore
+        Int communicationScore
+        Int problemSolvingScore
+        Int confidenceScore
+        String technicalFeedback
+        String communicationFeedback
+        String improvementRoadmap
+        AISummaryStatus status
+    }
+
+    InterviewerReview {
+        String id PK
+        String bookingId FK
+        String interviewerId FK
+        String intervieweeId FK
+        Int rating
+        String comment
+    }
+
+    CreditTransaction {
+        String id PK
+        String userId FK
+        String bookingId FK
+        Int amount
+        TransactionType type
+        DateTime createdAt
+    }
+
+    Payout {
+        String id PK
+        String interviewerId FK
+        Int credits
+        Float platformFee
+        Float netAmount
+        String paymentMethod
+        PayoutStatus status
+    }
+
+    Referral {
+        String id PK
+        String referrerId FK
+        String refereeId FK
+        ReferralStatus status
+        Int referrerReward
+        Int refereeReward
+    }
+
+    KnowledgeDocument {
+        String id PK
+        String type
+        String title
+        String content
+        String category
+        String difficulty
+        vector embedding
+    }
+
+    User ||--o{ Availability : "defines"
     User ||--o{ InterviewPlan : "offers"
-    User ||--o{ CreditTransaction : "transacts"
-    User ||--o{ Payout : "withdraws"
-    User ||--o{ InterviewerReview : "reviews/reviewed by"
-    User ||--o{ UserBadge : "earns"
-    User ||--o{ Referral : "refers/referred by"
+    User ||--o{ Booking : "books/hosts"
+    User ||--o{ CreditTransaction : "owns"
+    User ||--o{ Payout : "requests"
+    User ||--o{ InterviewerReview : "receives/writes"
+    User ||--o{ Referral : "refers"
 
-    Booking ||--o{ AttendanceLog : "logs presence"
-    Booking ||--o| Feedback : "generates post-call"
-    Booking ||--o| AISummary : "produces RAG analysis"
-    Booking ||--o{ CreditTransaction : "locks escrow"
-    Booking }o--|| InterviewPlan : "books tier"
-
-    Badge ||--o{ UserBadge : "assigned to"
-    KnowledgeDocument ||--|| KnowledgeDocument : "pgvector HNSW store"
+    Booking ||--o{ AttendanceLog : "records"
+    Booking ||--o| AISummary : "generates"
+    Booking ||--o| InterviewerReview : "has"
+    Booking ||--o{ CreditTransaction : "escrow"
+    InterviewPlan ||--o{ Booking : "applies to"
 ```
 
-### Schema Models Breakdown
+### Schema Enums & State Machines
 
-| Model / Table | Purpose & Architecture Highlights |
-| :--- | :--- |
-| **`User`** | Unified polymorphic account model supporting `INTERVIEWER` and `INTERVIEWEE` roles, credit balance, denormalized ratings, and Clerk integration. |
-| **`InterviewPlan`** | Dynamic pricing engine supporting duration variants (30/60/90 mins), bundle pricing, and promotional discount windows. |
-| **`Availability`** | Time slot scheduling engine indexed by `(interviewerId, startTime)`. |
-| **`Booking`** | Core transactional state machine tracking statuses (`PENDING`, `SCHEDULED`, `COMPLETED`, `CANCELLED`), escrow holds (`HELD`, `SETTLED`, `REFUNDED`), and Stream Call IDs. |
-| **`AttendanceLog`** | Immutable WebRTC audit log capturing timestamps for participant join, leave, disconnect, and reconnect events. |
-| **`AISummary`** | Comprehensive post-interview scorecard storing 4 domain scores (1-100), transcript moments, weak areas, and roadmaps. |
-| **`CreditTransaction`** | Append-only ledger recording all financial movements (purchases, escrow holds, releases, refunds, rewards). |
-| **`Payout`** | Withdrawal processing ledger tracking interviewer payouts, platform fees, payment methods, and admin fulfillment. |
-| **`Referral`** | Viral growth engine awarding dual incentives upon qualified first-session completion. |
-| **`KnowledgeDocument`** *(pgvector)* | 768-dimensional vector store indexed with **HNSW (`vector_cosine_ops`)** for sub-40ms similarity queries. |
+| Enum | Allowed Values | Usage in Architecture |
+| :--- | :--- | :--- |
+| **`UserRole`** | `UNASSIGNED`, `INTERVIEWEE`, `INTERVIEWER` | Role-based routing, authorization guards, and dashboard rendering. |
+| **`BookingStatus`** | `PENDING`, `SCHEDULED`, `COMPLETED`, `CANCELLED`, `REJECTED` | Lifecycle of an interview reservation. |
+| **`SettlementStatus`** | `HELD`, `SETTLED`, `REFUNDED`, `DISPUTED` | Escrow state machine governing credit locking and release. |
+| **`AttendanceEvent`** | `JOINED`, `LEFT`, `REJOINED`, `DISCONNECTED` | Granular presence logging via Stream WebRTC webhooks. |
+| **`InterviewCategory`**| `FRONTEND`, `BACKEND`, `FULLSTACK`, `DSA`, `SYSTEM_DESIGN`, `BEHAVIORAL`, `DEVOPS`, `MOBILE` | Taxonomy for profile filtering, question vectors, and evaluation rubrics. |
+| **`TransactionType`** | `CREDIT_PURCHASE`, `BOOKING_DEDUCTION`, `BOOKING_EARNING`, `BOOKING_REFUND`, `BOOKING_HELD`, `HELD_RELEASE`, `REFERRAL_REWARD` | Double-entry ledger classification. |
+| **`PayoutStatus`** | `PROCESSING`, `PROCESSED` | Fiat withdrawal fulfillment tracking. |
+| **`AISummaryStatus`** | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` | Asynchronous transcript analysis state machine. |
 
 ---
 
-## 🛠 Tech Stack
+## 🛠 Categorized Tech Stack & Architectural Decisions
 
-* **Frontend & Server Framework:** Next.js 16 (App Router, Turbopack, React 19)
-* **Styling & Components:** Tailwind CSS v4, Shadcn UI, Radix Primitives, Framer Motion, Lucide Icons
-* **Database & ORM:** Supabase PostgreSQL, Prisma ORM, `@prisma/adapter-pg`
-* **Vector Database:** PostgreSQL `pgvector` with **HNSW Indexing**
-* **Artificial Intelligence:** Google Gemini (`gemini-2.5-flash-lite`, `gemini-embedding-001`)
-* **Real-time Video & Chat:** Stream Video React SDK, Stream Chat SDK
-* **Authentication:** Clerk Auth (JWT, Session Management, Social OAuth)
-* **API Security & Defense:** Arcjet (Rate limiting, Bot detection, Shield protection)
-* **Email Infrastructure:** Resend, React Email, Nodemailer
-* **Containerization:** Docker (Multi-stage Alpine Linux build)
-* **Cloud Infrastructure:** AWS EC2 (`c7i-flex.large`, Ubuntu 24.04 LTS), Nginx Reverse Proxy
-* **SSL & Security:** Let's Encrypt Certbot (Automated TLS/HTTPS renewal)
-* **CI/CD:** GitHub Actions (Automated Lint, Prisma Generate, Build verification & SSH Deployment)
-
----
-
-## 🚢 DevOps & Production Deployment
-
-### Multi-Stage Dockerfile Optimization
-The production container uses a 4-stage build pipeline (`base` → `deps` → `builder` → `runner`):
-* **Minimal Footprint:** Alpine Linux base reduces final image size from 1.5 GB down to **~180 MB**.
-* **Security Hardening:** Runs with a non-root system user (`nextjs:nodejs`, UID 1001).
-* **Next.js Standalone Mode:** Automatically packages only the required dependencies from `node_modules`.
-
-### Automated GitHub Actions CI/CD Pipeline
-Every push to `main` executes a two-phase workflow:
-1. **Continuous Integration (CI):** Installs dependencies with `npm ci`, compiles Prisma, verifies Next.js Turbopack build, and runs the RAG benchmark suite.
-2. **Continuous Deployment (CD):** Connects to AWS EC2 via encrypted SSH, pulls latest commits, rebuilds Docker containers with `docker compose up -d --build`, and safely prunes stale layers.
+| Category | Technology | Provider / Version | Architectural Justification |
+| :--- | :--- | :--- | :--- |
+| **Core Framework** | **Next.js** | `v16.2.2` (Turbopack) | Server Components for instant initial paint, Server Actions for zero-API boilerplate, and standalone output for minimal Docker builds. |
+| **Language** | **JavaScript / Node.js** | `Node.js 20 LTS` | High asynchronous I/O performance for concurrent WebSocket and HTTP requests. |
+| **Database** | **PostgreSQL** | Supabase Managed | ACID compliance for transactional credit ledgers combined with native relational foreign keys. |
+| **Vector Engine** | **`pgvector`** | Supabase Extension | Native vector storage within Postgres eliminating the cost and sync complexity of external vector DBs (Pinecone/Weaviate). |
+| **Vector Index** | **HNSW Index** | `hnsw (vector_cosine_ops)` | Provides 99%+ recall without requiring centroid clustering, achieving **37ms P50 latency** across arbitrary dataset sizes. |
+| **AI Embeddings** | **Google Gemini** | `gemini-embedding-001` | High-density 768-dimensional semantic embeddings optimized for retrieval. |
+| **LLM Inference** | **Google Gemini** | `gemini-2.5-flash-lite` | Sub-second generative speed with strict JSON schema response mode enforcement. |
+| **WebRTC & Video** | **Stream Video SDK** | `@stream-io/video-react-sdk` | Enterprise global SFU network handling media routing, background recording, and real-time speech transcription. |
+| **Authentication** | **Clerk** | `@clerk/nextjs v6` | Complete session lifecycle, OAuth social logins, secure JWT cookies, and instant user onboarding. |
+| **Edge Defense** | **Arcjet** | `@arcjet/next v1` | IP rate limiting, bot protection, and attack shielding configured directly in Next.js middleware. |
+| **Styling & UI** | **Tailwind CSS v4 + Radix** | Shadcn UI Primitives | Accessible headless UI components styled with high-performance CSS tokens. |
+| **Email Engine** | **Resend** | `Resend API` + React Email | Transactional emails with typed React components for cross-client email rendering. |
+| **Containerization** | **Docker** | Multi-stage Alpine | Multi-stage builder shrinks image footprint to **180 MB**; unprivileged non-root runner enforces container security. |
+| **Cloud Hosting** | **AWS EC2** | `c7i-flex.large` (Mumbai) | 2 vCPU, 4 GiB RAM dedicated compute in `ap-south-1` offering cost-effective, full-root hosting control. |
+| **Reverse Proxy** | **Nginx** | `v1.24+` | TLS 1.3 termination, HTTP/2 multiplexing, client buffering, and reverse proxy forwarding to port 3000. |
+| **SSL / TLS** | **Certbot** | Let's Encrypt | Automated 90-day SSL certificate issuance and background cron renewal. |
+| **CI/CD** | **GitHub Actions** | Native GitHub Workflows | Zero-maintenance automated testing, build compilation, and SSH zero-downtime deployment. |
 
 ---
 
-## 💻 Local Development Setup
+## 🚢 DevOps, Cloud & Production Deployment
 
-### 1. Clone the Repository
+### 1. Docker Multi-Stage Build Architecture
+
+```
+[ Stage 1: Base (node:20-alpine + libc6-compat) ]
+                      │
+                      ▼
+[ Stage 2: Deps ] ───► Installs package.json & runs npx prisma generate
+                      │
+                      ▼
+[ Stage 3: Builder ] ─► Compiles Next.js standalone server with Turbopack
+                      │
+                      ▼
+[ Stage 4: Runner ] ──► Unprivileged 'nextjs' user (UID 1001)
+                        Copies standalone server + static assets (~180 MB image)
+```
+
+### 2. GitHub Actions Automated Pipeline (`deploy.yml`)
+
+1. **Trigger:** Push to `main` branch.
+2. **Job 1 (CI — Test & Validate):**
+   * Checks out code on `ubuntu-latest`.
+   * Sets up Node.js 20 and executes `npm ci`.
+   * Runs `npx prisma generate` to ensure type definitions compile.
+   * Runs `npm run test:rag` to benchmark vector similarity and latency.
+   * Compiles the production Next.js bundle (`npm run build`).
+3. **Job 2 (CD — Continuous Deployment):**
+   * Uses `appleboy/ssh-action` to establish an encrypted SSH session with AWS EC2 using `EC2_SSH_KEY`.
+   * Executes:
+     ```bash
+     cd prept
+     git pull origin main
+     docker compose up -d --build
+     docker image prune -f
+     ```
+   * Result: Zero-downtime container update.
+
+---
+
+## 💻 Local Development Guide
+
+### 1. Prerequisites
+* Node.js `20.x` or later
+* Git
+* PostgreSQL database with `pgvector` enabled (or Supabase account)
+
+### 2. Installation
 ```bash
+# Clone the repository
 git clone https://github.com/aayushsoni-ai/PrepT.git
 cd PrepT
+
+# Install dependencies
 npm install
 ```
 
-### 2. Configure Environment Variables
-Copy `.env.example` to `.env` and populate your credentials:
+### 3. Environment Configuration
+Create a `.env` file in the root directory using `.env.example`:
 ```bash
 cp .env.example .env
 ```
 
-Required keys include:
-* `NEXT_PUBLIC_APP_URL` (`http://localhost:3000`)
-* `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` & `CLERK_SECRET_KEY`
-* `DATABASE_URL` & `DIRECT_URL` (Supabase PostgreSQL with pgvector)
-* `GEMINI_API_KEY`
-* `NEXT_PUBLIC_STREAM_API_KEY` & `STREAM_SECRET_KEY`
-* `ARCJET_KEY`
-* `RESEND_API_KEY`
+Fill in your service credentials:
+```env
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-### 3. Initialize the Vector Database & Prisma
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+
+# Database (Supabase PostgreSQL + pgvector)
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...
+
+# AI & APIs
+GEMINI_API_KEY=AIzaSy...
+ARCJET_KEY=ajkey_...
+
+# Stream Video & Chat
+NEXT_PUBLIC_STREAM_API_KEY=...
+STREAM_SECRET_KEY=...
+
+# Email
+RESEND_API_KEY=re_...
+```
+
+### 4. Database Setup & RAG Seeding
 ```bash
-# Push schema to database
+# Generate Prisma Client & push schema
 npx prisma generate
 npx prisma db push
 
-# Enable pgvector and seed knowledge base with 26 curated questions and rubrics
+# Enable pgvector table and seed 26 verified questions & rubrics
 node scripts/seed-rag.js
 ```
 
-### 4. Run the Production Benchmark Suite
+### 5. Run the Production Benchmark Suite
 ```bash
 npm run test:rag
 ```
 
-### 5. Start the Dev Server
+### 6. Start the Local Server
 ```bash
 npm run dev
 ```
