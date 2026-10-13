@@ -9,7 +9,6 @@ out
 
 # Local Environment & Secrets
 .env*.local
-.env
 
 # Scripts & temporary databases
 scripts/test-production-rag.js
